@@ -1,6 +1,8 @@
 # STATE — updated every session
 
-**Last updated:** 2026-08-26 (repo creation)
+**Last updated:** 2026-08-26 (framework Revision 3: diagnosis-driven architecture
+evolution, working hypotheses a–f, world models promoted via ADR-003, environment
+ladder added)
 **Current phase:** Phase 0 — Loop harness (not started)
 
 ## Where things stand

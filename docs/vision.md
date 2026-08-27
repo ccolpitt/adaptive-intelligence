@@ -8,7 +8,7 @@ framework document for this repository.*
 
 ## 1. Motivation: The World Is Non-Stationary
 
-Deployed artificial neural networks are static. We formulate learning as fitting the
+Today, deployed artificial neural networks are static. We formulate learning as fitting the
 weights of a network to minimize loss against a training and test dataset — an image
 labeling set, a DQN replay buffer, next-token prediction during pre-training. Whatever
 the domain, the common characteristic is that the network is frozen after training.
@@ -86,7 +86,7 @@ external yardstick.
 
 **Verdict: build first. Nothing else is interpretable without it.**
 
-### Component 1: Architectural Evolution — worth pursuing, but last
+### Component 1: Architectural Evolution — pursue as diagnosis-driven design; undirected search last
 
 The original essay proposed architecture evolution as the outer loop, with each
 generation learning from the performance of the last, and a "tabula rasa protocol"
@@ -114,12 +114,68 @@ evaluate and lost to the baseline.
 expressive" encoding makes search intractable; a narrow one reduces to hyperparameter
 tuning. There is no known free lunch here.
 
-**Verdict: worth pursuing — demoted from outer loop to final phase.** When built,
-constrain it to a parameterized grammar (depth, width, block types, skip connections)
-rather than free-form topology: ~80% of the value at ~1% of the search-space size.
-Population-Based Training (Jaderberg et al., 2017) is the pragmatic template — it
-evolves hyperparameters and warm-started weights concurrently with training and is
-proven at realistic scale.
+**Why did automated search fail where humans succeeded?** Not because humans had
+deeper math (attention is three matrices and a softmax) or neuroscience (convolutions
+are the exception: Hubel & Wiesel → Fukushima, 1980 → LeCun). The dominant pattern in
+real breakthroughs is **diagnosis of a specific failure followed by a targeted fix**:
+
+- *Attention*: Bahdanau et al. (2014) diagnosed the seq2seq fixed-vector bottleneck
+  and let the decoder attend over all encoder states; Vaswani et al. (2017) diagnosed
+  that recurrence blocks parallelism and long-range gradient flow, and removed it.
+- *ResNets*: He et al. (2016) diagnosed that deeper nets trained worse *on training
+  data* — an optimization pathology — and made identity the default via skips.
+- *LSTM*: Hochreiter analyzed vanishing gradients mathematically, then designed gating
+  to protect the error signal (Hochreiter & Schmidhuber, 1997).
+- *Mixture-of-Experts*: diagnosed that capacity scaling forces compute scaling; fixed
+  it with sparse specialization (Shazeer et al., 2017; Fedus et al., 2022).
+
+What humans possessed was (1) rich diagnostic signal about *how* training failed, not
+just a scalar fitness; (2) causal reasoning from symptom to mechanism; (3) breadth of
+analogy. Classic NAS/neuroevolution had none of these: uninformed mutation, one-bit
+feedback per expensive training run, human-bounded primitive sets. That is why it
+failed — not because machine-discovered architecture is impossible.
+
+**The bet this project makes: diagnosis-driven architecture evolution.** Replace the
+random mutation operator with an informed proposer (LLM/agent + human) that reads
+training diagnostics and the literature, proposes a targeted change, and registers it
+as a falsifiable experiment. This is where the field is heading: FunSearch
+(Romera-Paredes et al., 2024) and AlphaEvolve (Novikov et al., 2025) replace random
+mutation with LLM-guided proposal and have produced genuinely new algorithms. The
+connect4-rl precursor already ran this loop at the hyperparameter level (its
+experiment registry entries follow diagnosis → hypothesis → change → result); this
+project extends the same loop to architecture. Honesty requires noting that
+machine-discovered *architecture* results to date are incremental, not
+attention-level; the realistic win is domain-appropriate fixes, measured.
+
+**Tenets for architectural change** (every proposed change must satisfy all):
+
+1. **Diagnosed, not divined.** The change responds to a specific, instrumented failure
+   in a previous run — evidence, not vibes. This makes diagnostics (Component 0)
+   load-bearing: the instrumentation must be able to *disambiguate* candidate causes.
+2. **Scales with compute** (Bitter Lesson-compliant). No fix that only works small.
+3. **Names its enrichment.** State what new information routing the change enables —
+   convolutions let spatial neighbors enrich each other; attention lets tokens enrich
+   each other by content; memory lets the past enrich the present; MoE enriches via
+   specialization. A change that cannot answer "what can now inform what?" is suspect.
+4. **Makes a falsifiable prediction** about which diagnostic improves, registered
+   before the run.
+5. **One change at a time** (framework principle 3).
+
+**Hand-designed architecture experiments are welcome at any phase** — they are
+ordinary registered experiments, not Phase 5 work. Example queued: a Thousand
+Brains-inspired cortical-column experiment (Hawkins, 2021) — N small parallel networks,
+each observing a different transformation of the state, voting on the value/policy,
+versus a monolithic net at matched parameter count. Nearest ML relatives: capsule
+routing-by-agreement (Sabour et al., 2017), ensembles, and (structurally, not
+philosophically) MoE. Numenta's open-source Monty framework implements the theory
+directly.
+
+**Verdict: diagnosis-driven evolution is the program; undirected population search is
+demoted to final phase, if ever.** When automated search is used at all, constrain it
+to a parameterized grammar (depth, width, block types, skip connections) rather than
+free-form topology. Population-Based Training (Jaderberg et al., 2017) is the
+pragmatic template — it evolves hyperparameters and warm-started weights concurrently
+with training and is proven at realistic scale.
 
 ### Component 2: Pedagogical Evolution — the strongest component, promoted to first research loop
 
@@ -250,8 +306,10 @@ lets the agent simulate — imagine — and that is the plausible mechanism for 
 transfer (Ha & Schmidhuber, 2018 "World Models"; Hafner et al., 2020-2023, Dreamer;
 Schrittwieser et al., 2020, MuZero). Note that for board games the dynamics model is
 free — the rules are known — which is what AlphaZero exploits via MCTS (Silver et al.,
-2018). World-model learning is deferred (Section 5), but the framework is designed so
-it can slot in as the transfer mechanism when the time comes.
+2018). World-model learning was initially deferred but has been **promoted** (ADR-003):
+Phase 2 includes a learned-dynamics track in which the rules are withheld and the agent
+must learn a transition model from observation and plan against it — MuZero's move, in
+a domain where the true model exists for verification.
 
 On reward and motivation, the original essay's observations survive intact: rewards are
 fleeting (satisfaction has a temporal half-life), meaningful rewards are challenging
@@ -261,6 +319,45 @@ error (Pathak et al., 2017), novelty as reward (Burda et al., 2018), learning pr
 itself as the reward signal (Oudeyer et al., 2007). They become concrete design inputs
 for the curriculum scheduler in Phase 3, rather than a separate reward-philosophy
 component.
+
+### Working Hypotheses
+
+The crux, stated as the two halves of the **stability-plasticity dilemma**: agents
+must (i) continually learn without catastrophic forgetting (stability / backward
+transfer) and (ii) learn each new thing faster because of what they already know
+(plasticity / forward transfer). Many methods buy one by selling the other — EWC
+protects old tasks by making new learning harder. This project's non-negotiable is
+refusing that trade. Enablers hypothesized, each independently testable:
+
+- **(a) World models** are necessary for deep transfer — simulation lets lessons be
+  inferred rather than experienced (promoted; ADR-003).
+- **(b) Pedagogical improvements** — curricula matched to capability (Phase 3).
+- **(c) Weight-update improvements** — continual backprop / dormant-neuron
+  reinitialization in the Sutton line (Dohare et al., 2024) (Phase 4).
+- **(d) Architectural changes** — most speculative; pursued as diagnosis-driven design
+  (Component 1 tenets).
+- **(e) Rehearsal / experience management** — interleaving old-task experience is
+  empirically the strongest known anti-forgetting lever and the baseline every
+  cleverer method must beat.
+- **(f) Capacity growth** — a fixed-size network cannot absorb tasks forever; growing
+  capacity as the portfolio grows (progressive-networks lineage) is distinct from
+  both (c) and (d).
+
+### The Environment Ladder
+
+Each tier adds one demand. **Promotion rule: an agent graduates a tier only by
+demonstrating transfer** — it must learn tier N+1 measurably faster because of tier N,
+without losing tier N. The ladder is a sequence of transfer exams, not a list of
+environments.
+
+| Tier | Environments | New demand |
+|---|---|---|
+| 0 | Connect-N family, tic-tac-toe | Exact evaluation (solvers); learned-dynamics track requires a verifiable world model |
+| 1 | MiniGrid / BabyAI (Chevalier-Boisvert et al., 2019) | Partial observability; grounded language instructions |
+| 2 | Crafter (Hafner, 2021) / Craftax | Open-ended long-horizon competence; world models earn their keep |
+| 3 | DM Control; Procgen (Cobbe et al., 2020) | Continuous physics; generalization across procedural variation |
+| 4 | Melting Pot (Leibo et al., 2021); Hanabi; Overcooked | Other agents: coordination, conventions ("culture"), theory of mind |
+| 5 | Minecraft via MineDojo (Fan et al., 2022) | Open world: physics + language + culture + agents; beyond single-machine compute |
 
 ---
 
@@ -305,8 +402,10 @@ Recorded so future sessions do not wander into them prematurely:
 |---|---|---|
 | **Resource-competition ecology** | Orders of magnitude more engineering than the league, with a known "beautiful terrarium, degenerate result" failure mode | Population diversity collapse that league mechanisms can't fix (ADR-002) |
 | **Learned structural-update policy** (a network that rewrites other networks' structure) | A meta-learning research program unto itself; heuristics (gradient-magnitude growth, dormancy-based pruning) must be exhausted first | Heuristic structural rules demonstrably plateau on Phase 4 metrics |
-| **World models, imagination, planning** (generalized MCTS, evolving abstraction levels) | The plausible deep-transfer mechanism, but gating the loop on it would delay everything; board-game tasks get exact models free via their rules | Phase 2 shows transfer exists but saturates at shallow feature reuse |
 | **Robotic embodiment, self-repair, physical self-sufficiency** | The far-future version of the vision | Not on this roadmap |
+
+*World models, imagination, and planning were parked in Revision 2 and have since been
+promoted to the roadmap (Phase 2 learned-dynamics track) — see ADR-003.*
 
 ---
 
@@ -329,35 +428,51 @@ itself with energy and repairs itself indefinitely, without human intervention.
 ## References
 
 - Allis, V. (1988). *A Knowledge-Based Approach of Connect-Four.* MSc thesis, Vrije Universiteit Amsterdam. (Connect 4 solved: first player wins.)
+- Bahdanau, D., Cho, K., & Bengio, Y. (2014). *Neural Machine Translation by Jointly Learning to Align and Translate.* (The original attention mechanism, born from the fixed-vector bottleneck diagnosis.)
 - Balduzzi, D., et al. (2019). *Open-ended learning in symmetric zero-sum games.* ICML.
 - Bengio, Y., Louradour, J., Collobert, R., & Weston, J. (2009). *Curriculum Learning.* ICML.
 - Berner, C., et al. (2019). *Dota 2 with Large Scale Deep Reinforcement Learning.* (OpenAI Five.)
 - Burda, Y., et al. (2018). *Exploration by Random Network Distillation.*
+- Chevalier-Boisvert, M., et al. (2019). *BabyAI: A Platform to Study the Sample Efficiency of Grounded Language Learning.* ICLR.
+- Cobbe, K., et al. (2020). *Leveraging Procedural Generation to Benchmark Reinforcement Learning.* ICML. (Procgen.)
 - Dennis, M., et al. (2020). *Emergent Complexity and Zero-shot Transfer via Unsupervised Environment Design.* NeurIPS. (PAIRED.)
 - Dohare, S., Sutton, R. S., et al. (2024). *Loss of plasticity in deep continual learning.* Nature 632.
 - Elsken, T., Metzen, J. H., & Hutter, F. (2019). *Neural Architecture Search: A Survey.* JMLR.
 - Evci, U., et al. (2020). *Rigging the Lottery: Making All Tickets Winners.* ICML. (RigL.)
+- Fan, L., et al. (2022). *MineDojo: Building Open-Ended Embodied Agents with Internet-Scale Knowledge.* NeurIPS.
+- Fedus, W., Zoph, B., & Shazeer, N. (2022). *Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity.* JMLR.
 - Frankle, J., & Carbin, M. (2019). *The Lottery Ticket Hypothesis.* ICLR.
 - French, R. M. (1999). *Catastrophic forgetting in connectionist networks.* Trends in Cognitive Sciences.
+- Fukushima, K. (1980). *Neocognitron: A self-organizing neural network model for a mechanism of pattern recognition unaffected by shift in position.* Biological Cybernetics.
 - Ha, D., & Schmidhuber, J. (2018). *World Models.*
+- Hafner, D. (2021). *Benchmarking the Spectrum of Agent Capabilities.* (Crafter.)
 - Hafner, D., et al. (2023). *Mastering Diverse Domains through World Models.* (DreamerV3.)
+- Hawkins, J. (2021). *A Thousand Brains: A New Theory of Intelligence.* Basic Books.
+- He, K., Zhang, X., Ren, S., & Sun, J. (2016). *Deep Residual Learning for Image Recognition.* CVPR. (ResNets, from the degradation diagnosis.)
+- Hochreiter, S., & Schmidhuber, J. (1997). *Long Short-Term Memory.* Neural Computation.
 - Jaderberg, M., et al. (2017). *Population Based Training of Neural Networks.*
 - Jiang, M., Grefenstette, E., & Rocktäschel, T. (2021). *Prioritized Level Replay.* ICML.
 - Kirkpatrick, J., et al. (2017). *Overcoming catastrophic forgetting in neural networks.* PNAS. (EWC.)
 - Lehman, J., et al. (2020). *The Surprising Creativity of Digital Evolution.* Artificial Life 26(2).
+- Leibo, J. Z., et al. (2021). *Scalable Evaluation of Multi-Agent Reinforcement Learning with Melting Pot.* ICML.
 - Lyle, C., et al. (2023). *Understanding Plasticity in Neural Networks.* ICML.
 - Mallya, A., & Lazebnik, S. (2018). *PackNet: Adding Multiple Tasks to a Single Network by Iterative Pruning.* CVPR.
 - McCloskey, M., & Cohen, N. J. (1989). *Catastrophic interference in connectionist networks.* Psychology of Learning and Motivation.
+- Novikov, A., et al. (2025). *AlphaEvolve: A coding agent for scientific and algorithmic discovery.* Google DeepMind. (LLM-guided evolution producing new algorithms.)
 - Oudeyer, P.-Y., Kaplan, F., & Hafner, V. (2007). *Intrinsic Motivation Systems for Autonomous Mental Development.* IEEE Trans. Evolutionary Computation.
 - Pathak, D., et al. (2017). *Curiosity-driven Exploration by Self-supervised Prediction.* ICML. (ICM.)
 - Real, E., et al. (2019). *Regularized Evolution for Image Classifier Architecture Search.* AAAI.
 - Real, E., et al. (2020). *AutoML-Zero: Evolving Machine Learning Algorithms From Scratch.* ICML.
+- Romera-Paredes, B., et al. (2024). *Mathematical discoveries from program search with large language models.* Nature. (FunSearch.)
 - Rusu, A. A., et al. (2016). *Progressive Neural Networks.*
+- Sabour, S., Frosst, N., & Hinton, G. E. (2017). *Dynamic Routing Between Capsules.* NeurIPS. (Reference frames + voting — nearest ML relative of cortical columns.)
 - Schrittwieser, J., et al. (2020). *Mastering Atari, Go, chess and shogi by planning with a learned model.* Nature. (MuZero.)
+- Shazeer, N., et al. (2017). *Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer.* ICLR.
 - Silver, D., et al. (2018). *A general reinforcement learning algorithm that masters chess, shogi, and Go through self-play.* Science. (AlphaZero.)
 - Stanley, K. O., & Miikkulainen, R. (2002). *Evolving Neural Networks through Augmenting Topologies.* Evolutionary Computation. (NEAT.)
 - Sutton, R. S. (2019). *The Bitter Lesson.*
 - Taylor, M. E., & Stone, P. (2009). *Transfer Learning for Reinforcement Learning Domains: A Survey.* JMLR.
+- Vaswani, A., et al. (2017). *Attention Is All You Need.* NeurIPS.
 - Vinyals, O., et al. (2019). *Grandmaster level in StarCraft II using multi-agent reinforcement learning.* Nature. (AlphaStar.)
 - Wang, R., Lehman, J., Clune, J., & Stanley, K. O. (2019). *POET: Paired Open-Ended Trailblazer.* (Endlessly generating increasingly complex environments.)
 - Zoph, B., & Le, Q. V. (2017). *Neural Architecture Search with Reinforcement Learning.* ICLR.

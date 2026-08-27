@@ -23,9 +23,13 @@ increasingly sample-efficient at learning the next one.** Full framework:
    of a policy means it stops receiving compute, never that it is erased.
 5. **Update STATE.md before ending any session.** A session that changed anything and
    didn't update STATE.md is incomplete. This is how the next session resumes.
-6. **Respect the deferred list** (`docs/vision.md` §5). Do not build the ecology, the
-   learned structural-update policy, or world models unless their revisit trigger has
-   fired and the human has agreed.
+6. **Respect the deferred list** (`docs/vision.md` §5). Do not build the ecology or
+   the learned structural-update policy unless their revisit trigger has fired and the
+   human has agreed. (World models were promoted 2026-08-26 — ADR-003.)
+7. **Architectural changes follow the tenets** (`docs/vision.md` Component 1):
+   diagnosed not divined; scales with compute; names its enrichment; makes a
+   falsifiable prediction; one change at a time. Hand-designed architecture
+   experiments are welcome in any phase; undirected search is not.
 
 ## How to Resume a Session
 

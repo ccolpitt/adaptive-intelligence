@@ -19,6 +19,11 @@ Port and generalize the connect4-rl improvement loop into domain-agnostic interf
 - [ ] `Scheduler`: heuristic task/training selection (dumb on purpose)
 - [ ] Experiment registry: hypothesis + config + results, append-only
       (formalize connect4-rl's `experiments.json`)
+- [ ] Diagnostic telemetry from day one: per-run training curves, gradient norms,
+      dormant/dead-neuron stats, per-task eval history — persisted with each
+      experiment. This feeds Phase 4 (plasticity) and the diagnosis-driven
+      architecture tenets (vision.md, Component 1). Diagnostics must be able to
+      DISAMBIGUATE causes, not just detect symptoms.
 - [ ] Connect 4 ported as seed task #1; champion-challenger loop runs end-to-end
       inside the harness
 
@@ -43,6 +48,10 @@ transfer protocol is written down and unit-tested.
       `Task` interface
 - [ ] Single network, multiple tasks (I/O adapters as needed)
 - [ ] Measure: does mastery of task A accelerate task B? Compounding across 3+ tasks?
+- [ ] Learned-dynamics track (world model required — ADR-003): withhold the rules;
+      the agent learns a transition model from observed transitions and plans against
+      it (MuZero-style). Diagnostic: compare planning with the learned model vs the
+      true rules to measure world-model error directly.
 
 **Done when:** we have a falsifiable answer with sample-efficiency curves. Either
 outcome is a result.
@@ -60,11 +69,25 @@ outcome is a result.
       connect4-rl prototype)
 - [ ] Gradient-guided structural growth (RigL-style), vs static baseline
 
-## Phase 5 — Architectural Evolution
+## Phase 5 — Diagnosis-Driven Architecture Evolution
 
-- [ ] Constrained architecture grammar (depth, width, blocks, skips)
-- [ ] Small population + league selection; PBT-style warm starting
+The loop: instrumented failure → informed proposal (agent/human reads diagnostics +
+literature) → registered falsifiable experiment → result recorded. See the tenets in
+`docs/vision.md` Component 1 (diagnosed not divined; scales with compute; names its
+enrichment; falsifiable prediction; one change at a time).
+
+- [ ] Diagnosis catalog: map observed pathologies (per Phase 0 telemetry) to candidate
+      architectural responses
+- [ ] Proposal protocol: every architecture experiment cites the diagnostic evidence
+      that motivated it
+- [ ] If automated search is used: constrained grammar (depth, width, blocks, skips),
+      small population + league selection, PBT-style warm starting
 - [ ] Only architectures that beat the fixed benchmark AND the incumbent survive
+
+Note: hand-designed architecture experiments (e.g. the cortical-column/voting
+experiment, vision.md Component 1) are ordinary registered experiments and may run in
+ANY phase — Phase 5 is about systematizing the diagnosis→proposal loop, not about
+gatekeeping design work.
 
 ## Not Phases (running throughout)
 
@@ -72,9 +95,23 @@ outcome is a result.
 - Experiment registry discipline
 - STATE.md updates every session
 
+## Environment Ladder (beyond Phase 2's task family)
+
+Promotion rule: an agent graduates a tier only by demonstrating transfer — learn tier
+N+1 measurably faster because of tier N, without losing tier N. Details and references
+in `docs/vision.md` §3.
+
+- Tier 0: Connect-N family, tic-tac-toe (solvers = exact evaluation)
+- Tier 1: MiniGrid / BabyAI (partial observability, grounded language)
+- Tier 2: Crafter / Craftax (open-ended, long-horizon; world models earn their keep)
+- Tier 3: DM Control, Procgen (physics, procedural generalization)
+- Tier 4: Melting Pot, Hanabi, Overcooked (other agents, conventions, theory of mind)
+- Tier 5: Minecraft via MineDojo (open world; beyond single-machine compute)
+
 ## Parked (see docs/vision.md §5 for revisit triggers)
 
 - Resource-competition ecology
 - Learned structural-update policy
-- World models / imagination / planning
 - Physical embodiment
+
+*World models were parked here in Revision 2; promoted via ADR-003 to Phase 2.*
