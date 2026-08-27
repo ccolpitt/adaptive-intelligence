@@ -31,6 +31,13 @@ increasingly sample-efficient at learning the next one.** Full framework:
    falsifiable prediction; one change at a time. Hand-designed architecture
    experiments are welcome in any phase; undirected search is not.
 
+## Relationship to connect4-rl
+
+The sibling repo `~/Development/github/connect4-rl` is **read-only reference
+material**: read its loop, league, and experiment-registry code when porting ideas,
+but NEVER modify, commit to, or create files in it. All new work lands in this
+repository only.
+
 ## How to Resume a Session
 
 1. Read `STATE.md` — current phase, last results, next task.
