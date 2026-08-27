@@ -472,6 +472,7 @@ itself with energy and repairs itself indefinitely, without human intervention.
 - Stanley, K. O., & Miikkulainen, R. (2002). *Evolving Neural Networks through Augmenting Topologies.* Evolutionary Computation. (NEAT.)
 - Sutton, R. S. (2019). *The Bitter Lesson.*
 - Taylor, M. E., & Stone, P. (2009). *Transfer Learning for Reinforcement Learning Domains: A Survey.* JMLR.
+- Thousand Brains Project (Numenta, open-sourced 2024). *Monty — a sensorimotor learning framework implementing the Thousand Brains Theory.* Documentation: https://thousandbrainsproject.readme.io — Code: https://github.com/thousandbrainsproject/tbp.monty. (Named for Vernon Mountcastle, who proposed the cortical column as the neocortex's repeating functional unit. Directly relevant to the queued cortical-column experiment.)
 - Vaswani, A., et al. (2017). *Attention Is All You Need.* NeurIPS.
 - Vinyals, O., et al. (2019). *Grandmaster level in StarCraft II using multi-agent reinforcement learning.* Nature. (AlphaStar.)
 - Wang, R., Lehman, J., Clune, J., & Stanley, K. O. (2019). *POET: Paired Open-Ended Trailblazer.* (Endlessly generating increasingly complex environments.)
