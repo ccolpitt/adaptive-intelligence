@@ -84,6 +84,20 @@ external yardstick.
 - **Negative results are recorded with the same care as positive ones.** The experiment
   registry is append-only.
 
+**A forward-looking tension: self-generated benchmarks.** The principle above says
+*every task carries a fixed external benchmark*. But much real learning has no
+supplied oracle — performing music, holding a conversation, writing — and a mature
+intelligence must construct its own notion of mastery there, by soliciting feedback
+and reasoning about what "good" means. This is not a contradiction to be waved away;
+it is the hardest measurement problem in the program, deferred to roadmap Phase 6.
+The load-bearing distinction that keeps it honest: a policy may *propose* a
+benchmark, but the signal that grades it must still originate **outside the policy
+being measured** — a retained oracle (where one exists), grounded human preference,
+a real downstream outcome, or a frozen, version-stamped reward model. A policy that
+invents a benchmark and then scores itself against it has measured nothing — the
+v32 self-referential failure, one level up. Self-generated *targets* are the goal;
+self-referential *grading* is the trap.
+
 **Verdict: build first. Nothing else is interpretable without it.**
 
 ### Component 1: Architectural Evolution — pursue as diagnosis-driven design; undirected search last
@@ -320,6 +334,20 @@ itself as the reward signal (Oudeyer et al., 2007). They become concrete design 
 for the curriculum scheduler in Phase 3, rather than a separate reward-philosophy
 component.
 
+"What is interesting right now?" is answered at two levels, upgraded in that order
+(roadmap Phase 3a/3b). First externally: the scheduler allocates compute by learning
+progress — solved tasks and impossible tasks both read as boring (slope ≈ 0), the
+frontier reads as interesting. Then internally: intrinsic bonuses (curiosity,
+competence progress) move motivation inside the agent, culminating in the *free play*
+experiment — the task menu becomes part of the environment and an **autotelic** agent
+(Colas et al., 2022) chooses its own practice schedule, the way a human drifts from
+piano to dancing to an essay, task-switching driven by its own boredom and progress
+rather than by an external scheduler. Mastery-for-its-own-sake is then just the
+competence-progress reward at work. When every task is mastered and aggregate learning
+progress flatlines, the system has outgrown its curriculum: it notifies the human,
+whose role is to supply the next tasks at the frontier — hard enough to yield
+progress, near enough for transfer (the zone of proximal development, again).
+
 ### Working Hypotheses
 
 The crux, stated as the two halves of the **stability-plasticity dilemma**: agents
@@ -363,12 +391,13 @@ environments.
 
 ## 4. Implementation Roadmap
 
-The organizing principle — learned empirically in the connect4-rl precursor, where
-every "clever" component change (Double DQN, low LR, wider FC) lost to the plain
-baseline and only the loop-level variable (more training) mattered:
+Section 3 states the goal; this section states how we get there. The organizing
+principle comes from the connect4-rl precursor, where every "clever" component change
+(Double DQN, low LR, wider FC) lost to the plain baseline and only the loop-level
+variable — more training — moved the benchmark:
 
-> **Close the loop with the dumbest possible components first. Then upgrade one
-> component at a time, measuring each upgrade against the dumb baseline.**
+> **Close the loop with the simplest components first. Then upgrade one component at a
+> time, and keep each change only if it beats the simple baseline on the benchmark.**
 
 - **Phase 0 — Loop harness.** Generalize the connect4-rl champion-challenger loop into
   domain-agnostic interfaces: `Task` (environment + reward + fixed benchmark), `Policy`
@@ -435,6 +464,7 @@ itself with energy and repairs itself indefinitely, without human intervention.
 - Burda, Y., et al. (2018). *Exploration by Random Network Distillation.*
 - Chevalier-Boisvert, M., et al. (2019). *BabyAI: A Platform to Study the Sample Efficiency of Grounded Language Learning.* ICLR.
 - Cobbe, K., et al. (2020). *Leveraging Procedural Generation to Benchmark Reinforcement Learning.* ICML. (Procgen.)
+- Colas, C., Karch, T., Sigaud, O., & Oudeyer, P.-Y. (2022). *Autotelic Agents with Intrinsically Motivated Goal-Conditioned Reinforcement Learning: A Short Survey.* JAIR. (Agents that choose their own goals — the free-play experiment.)
 - Dennis, M., et al. (2020). *Emergent Complexity and Zero-shot Transfer via Unsupervised Environment Design.* NeurIPS. (PAIRED.)
 - Dohare, S., Sutton, R. S., et al. (2024). *Loss of plasticity in deep continual learning.* Nature 632.
 - Elsken, T., Metzen, J. H., & Hutter, F. (2019). *Neural Architecture Search: A Survey.* JMLR.
