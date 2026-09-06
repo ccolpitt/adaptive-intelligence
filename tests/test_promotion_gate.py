@@ -32,3 +32,48 @@ def test_v32_trap_is_named_in_reason():
     assert not d.promote
     assert d.relative_pass and not d.absolute_pass
     assert "REGRESSED" in d.reason
+
+
+# -- statistical gate -------------------------------------------------------
+
+from harness.promotion_gate import statistical_double_gate  # noqa: E402
+
+BENCH_N = 168  # ladder aggregate sample size
+
+
+def stat_gate(h2h, n, bench_c, bench_champ):
+    return statistical_double_gate(h2h, n, bench_c, BENCH_N, bench_champ, BENCH_N)
+
+
+def test_stat_gate_promotes_clear_winner():
+    d = stat_gate(0.65, 200, 0.30, 0.25)
+    assert d.promote
+
+
+def test_stat_gate_lucky_small_sample_does_not_promote():
+    # 60% of 20 games: point estimate says "better", statistics say "unproven".
+    d = stat_gate(0.60, 20, 0.30, 0.30)
+    assert not d.promote
+    assert "not proven yet" in d.reason
+
+
+def test_stat_gate_same_winrate_promotes_with_enough_games():
+    # The same 60% IS evidence at 200 games — false negatives are a sample
+    # size problem, not a threshold problem.
+    d = stat_gate(0.60, 200, 0.30, 0.30)
+    assert d.promote
+
+
+def test_stat_gate_benchmark_noise_does_not_block():
+    # Slightly lower benchmark score, well within noise at n=168: promote.
+    d = stat_gate(0.65, 200, 0.28, 0.30)
+    assert d.promote
+
+
+def test_stat_gate_significant_regression_blocks():
+    # Beats the champion head-to-head but collapses on the ladder: the v32
+    # trap. 0.10 vs 0.30 at n=168 is way beyond noise.
+    d = stat_gate(0.70, 200, 0.10, 0.30)
+    assert not d.promote
+    assert d.relative_pass and not d.absolute_pass
+    assert "v32" in d.reason

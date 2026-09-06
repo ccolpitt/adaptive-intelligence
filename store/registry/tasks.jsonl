@@ -1,1 +1,2 @@
 {"action_spec": {"n": 7}, "benchmark_ref": "connect4-benchmark@v0", "mastery_threshold": 0.97, "obs_spec": {"dtype": "float32", "shape": [2, 6, 7]}, "registered_at": "2026-08-31T19:58:49.789975+00:00", "task_id": "connect4", "version": 1}
+{"action_spec": {"n": 7}, "benchmark_ref": "connect4-benchmark@v1", "mastery_threshold": 0.9, "obs_spec": {"dtype": "float32", "shape": [2, 6, 7]}, "registered_at": "2026-09-06T21:23:49.058823+00:00", "task_id": "connect4", "version": 2}

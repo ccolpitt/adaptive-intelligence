@@ -217,6 +217,14 @@ adding two thin adapters, never rebuilding the trunk. Design consequences, stage
   get their own encoder families; the trunk contract (latent in, latent out) is
   what stays stable. The Gato-style fully tokenized universal interface is the
   limit of this pattern — noted, not built.
+- **Stages A/B are scaffolding, not the endgame.** Per-task adapters give each
+  task its own retina — necessary for cheap Phase 2 science, but un-human and a
+  cap on transfer: nothing perceptual can cross between tasks whose inputs never
+  share a format. The singular-agent goal (working hypothesis g) is **Stage C: one
+  shared sensory interface** — tasks rendered into a common format, one perceptual
+  encoder in front of the trunk. That is Phase 7; it replaces adapters from the
+  outside in, and nothing in Stage A/B forecloses it (a pixel rendering is just
+  another `obs_spec`).
 - The `Task` interface must therefore expose `obs_spec`/`action_spec` from
   Phase 0, even while only Connect 4 exists — that is the only Phase 0 cost of
   this whole design.
@@ -236,6 +244,53 @@ Growing the trunk itself when the portfolio outgrows it is working hypothesis (f
       the agent learns a transition model from observed transitions and plans against
       it (MuZero-style). Diagnostic: compare planning with the learned model vs the
       true rules to measure world-model error directly.
+- [ ] Registered prediction, cheap to state now and scored in Phase 7: transfer has
+      (at least) two carriers — *perceptual* (shared input statistics) and
+      *strategic* (shared task structure in the trunk). Within the symbolic board
+      family we predict transfer > 0 (shared structure, near-shared encoding).
+      From symbolic matrices to pixel tasks (Atari) we predict perceptual transfer
+      ≈ 0 — a trunk trained on 6×7 matrices buys no perceptual head start — while
+      strategic transfer may survive an input swap. Phase 7 separates the two
+      cleanly by presenting the SAME game through symbolic and pixel adapters into
+      the same trunk.
+- [ ] **Policy artifact = multi-task organism** (from the first two-task run): the
+      archived policy's metadata lists the tasks it supports — the per-task
+      adapter/head component map and which task version(s) each component was
+      trained on. Loading any fossil answers "what can this thing play?" without
+      guesswork; the transfer matrix is computable from the archive alone.
+- [ ] **Per-task replay buffers as archival assets** (working hypothesis e): keep a
+      separate experience buffer per task instead of discarding old-task experience
+      when training moves on. While training task B, interleave replayed task-A
+      transitions (rehearsal) — empirically the strongest known anti-forgetting
+      lever and the baseline every cleverer method must beat. Old experience is
+      data the agent already paid samples for; throwing it away is throwing away
+      the currency this project is measured in.
+
+### Registered-experiment candidates (human-proposed, 2026-08-31)
+
+- [ ] **Task identity as an input — the network learns what tasks ARE.** Two arms:
+      condition the trunk on an explicit task embedding (cheap baseline: task-ID
+      one-hot) vs. force the policy to infer which task it is playing from the
+      observation stream alone. Hypothesis: inference-from-input builds more
+      general representations (the net must notice "this is the small board" the
+      way a human does); explicit ID is faster per task but risks siloing knowledge
+      by ID. Bonus diagnostic either way: the learned task-embedding space becomes
+      a map of the portfolio — tasks that land near each other should be the ones
+      that transfer to each other. Falsifiable and cheap.
+- [ ] **Prediction accuracy as a first-class score (hypothesis a, sharpened).** In
+      the learned-dynamics track, evaluate BOTH how well the policy plays and how
+      accurately it predicts the next state (held-out transition error), recorded
+      per eval like any benchmark score. Hypothesis: world-model accuracy *leads*
+      play strength and predicts transfer better than play strength does — because
+      knowing how the world works is the part that generalizes across tasks.
+- [ ] **Imagination as experience multiplier (hypothesis h, Dreamer-style).** Train
+      the policy on world-model rollouts ("dreams") between real episodes; measure
+      the exchange rate — how many imagined episodes substitute for one real
+      episode at matched final benchmark score? Second arm: prioritized
+      consolidation — replay surprising, high-TD-error experiences preferentially
+      (Schaul et al., 2016) vs uniform replay; measure retention and
+      samples-to-threshold. One variable at a time: imagination and prioritization
+      are separate registered experiments.
 
 **Done when:** sample-efficiency curves answer whether mastering task A reduces the
 episodes-to-threshold on task B under matched compute, with forward- and
@@ -386,6 +441,47 @@ motivation, free play). **Revisit trigger to promote from "later" to "now":** th
 task family exhausts what human-authored benchmarks can cheaply cover, i.e. we
 start wanting to train on tasks (open-ended generation, interaction) where writing
 the oracle is itself the bottleneck. Records an ADR when promoted.
+
+## Phase 7 — Sensory Grounding: One Set of Eyes (ADR-004)
+
+*(Phase numbering is thematic, not strictly temporal — Phase 7 can begin when its
+trigger fires even if 5/6 have not.)*
+
+Working hypothesis (g) made into a program. A baby and an adult receive essentially
+the same sensory stream; the adult just has more wiring assigning meaning to it.
+Per-task adapters (Phase 2) give each task its own retina — fine for cheap science,
+but a 6×7 matrix input will never generalize toward Atari, throwing, or talking. The
+measurable sign of the singular agent: **one input interface supporting more and
+more tasks.**
+
+- **7a — Common sensory rendering.** Render the already-mastered task family to
+  pixels. The renderer is a versioned component of the task (`connect4-pixels@v1`):
+  varied piece colors, sizes, lighting, camera perspective — same game underneath,
+  so the SAME solver benchmark still grades play and measurement stays absolute.
+  Nothing about Component 0 changes; only the observation channel does.
+- **7b — Perceptual pretraining (the developmental curriculum).** Before any game:
+  learn objects, persistence, and intuitive physics from raw interaction with the
+  rendered world — pieces fall down the column, land, rest on the piece below
+  (audio events optional, later). This is the world model (ADR-003) moved down to
+  the sensory floor. Curriculum order: passive next-frame prediction → interactive
+  prediction (drop a piece, predict the outcome) → games. The "feel" that pieces
+  will fall is exactly a learned dynamics prior over the shared sensory stream.
+- **7c — The tree of expertise, measured.** Re-learn the mastered family from
+  pixels and score three falsifiable things: (i) does perceptual pretraining (7b)
+  accelerate pixel-Connect-4 vs learning it from raw pixels cold? (ii) do
+  invariances hold — mastery persists across piece color / lighting / viewpoint
+  changes with no retraining? (iii) does the same perceptual encoder accelerate the
+  NEXT visually-presented task (rendered Go, Atari)? The transfer matrix gains a
+  second axis: perceptual vs strategic transfer, separable because the same game
+  can be presented through symbolic and pixel adapters into the same trunk.
+
+**Costs and sequencing, honestly:** pixels multiply per-episode compute by one to
+two orders of magnitude. This phase does not replace the symbolic track — Phases
+2–4 on cheap matrix inputs remain the fast science loop where transfer, forgetting,
+and plasticity results are cheapest to buy. **Promotion trigger:** Phase 2 verdict
+is in AND either (a) transfer saturates at shallow feature reuse — suggesting the
+missing enrichment is input-level sharing — or (b) the ladder adds the first task
+that natively arrives in pixels (Tier 1+).
 
 ## Not Phases (running throughout)
 

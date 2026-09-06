@@ -51,6 +51,22 @@ is next
   benchmark precisely defined; experiments first-class with policy_refs; Phase 0
   test spec; Phase 2 adapter design; Phase 3a/3b intrinsic motivation + free play;
   curriculum-exhaustion protocol) and vision (autotelic agents, Colas et al. 2022).
+- **Phase 2 additions (human design review):** policy artifact must list supported
+  tasks (per-task adapter/head map + versions trained on); per-task replay buffers
+  kept as archival assets (rehearsal baseline). Three registered-experiment
+  candidates added: task-identity-as-input (explicit embedding vs inferred),
+  prediction accuracy as first-class score alongside play strength, and
+  imagination-as-experience-multiplier (Dreamer-style exchange rate + prioritized
+  high-TD replay). New working hypothesis (h) in vision §3; Schaul et al. 2016
+  added to references.
+- **ADR-004 accepted (singular agent / common sensory input):** working hypothesis
+  (g) "shared sensory grounding" added to vision §3; Phase 2 adapters explicitly
+  designated scaffolding with a named Stage C (one shared sensory interface); new
+  roadmap **Phase 7 — Sensory Grounding: One Set of Eyes** (7a versioned pixel
+  rendering of mastered tasks, same absolute benchmarks; 7b perceptual pretraining /
+  developmental curriculum — intuitive physics before games; 7c perceptual-vs-
+  strategic transfer measured separately). Registered prediction added to Phase 2:
+  within-family symbolic transfer > 0, symbolic→pixel perceptual transfer ≈ 0.
 - Roadmap extended this session (human design review): Phase 3b now states
   explicitly that task prioritization is part of the policy and the scheduler is
   not a one-way door (progressive absorption scheduler → LP-scheduler → intrinsic
@@ -85,15 +101,35 @@ campaign in the harness. In order:
    values, ladder ordering. Depth 10 ≈ 0.5 s from the empty board (Python).
    Interactive UX: `python -m harness play-solver --depth N` (per-move solver
    evals shown; 'd N' changes depth mid-game). LICENSE: Apache-2.0 added.
-2. `connect4-benchmark@v1`: move accuracy over ~500 fixed seeded positions +
-   depth-ladder win rates (roadmap Phase 1 spec). NOTE: new benchmark ⇒ register
-   task version `connect4@v2`; old scores stay attributed to old versions.
-3. Retroactive scoring: gen-0 + pol-00005 on v1; if time allows, the connect4-rl
-   champions v0→v32 (answers the long-open "how strong was v32 really?").
-4. Mastery campaign: registered experiments, one variable each (longer training,
-   symmetric augmentation, terminal-ratio buffer, PER), each vs dumb baseline.
-   Target mastery on benchmark-v0 (0.97), track absolute progress on v1. Run
-   `pytest -m slow` before each batch. Expected to run past one session.
+2. `connect4-benchmark@v1`: DONE 2026-09-01 — implemented as the progressive
+   solver LADDER (depths 1-6, 28 fixed-opening games/rung, 168 games/eval,
+   frontier = shallowest rung below 90%; harness/tasks/connect4_ladder.py;
+   task registered as connect4@v2). Move-accuracy-over-positions variant
+   DEFERRED: exact midgame solves infeasible in pure Python; revisit as
+   benchmark v2 (endgame-position subset or faster solver).
+   Statistical machinery added (harness/stats.py + statistical_double_gate):
+   promotion needs h2h Wilson 95% LB > 0.5; regression blocks only when
+   significant; detectable-effect sizes stated in every hypothesis.
+   Hypothesis template (human-readable: CONTEXT/HYPOTHESIS/PREDICTION/
+   DECISION CRITERIA): docs/hypothesis-template.md. Experiments live as
+   committed scripts in experiments/.
+3. Retroactive scoring: partially done — incumbent pol-00005 scored 0.030 on
+   ladder (frontier depth 1, rung-1 0.18). connect4-rl v0→v32 champs still todo.
+4. Mastery campaign: STARTED. Results so far:
+   - exp-002-more-self-play (INCONCLUSIVE): +1500 self-play episodes → 3 h2h
+     promotions but ladder only 0.030→0.042 (< 0.09 detectable). Self-play
+     improves relative strength, not absolute — v32 pattern now measurable.
+   - exp-003-frontier-training-mix (REFUTED): 50% training vs frontier-depth
+     solver made challengers WORSE (ladder 0.012-0.030); gate rejected all 5,
+     champion protected. Diagnosis: depth-1 solver (18% win rate) is beyond
+     the zone of proximal development — replay flooded with losses. Revisit
+     when rung-1 ≈ 0.5, or use an opponent the policy beats ~50%.
+   Next candidate hypotheses: reward signal density (the env gives no signal
+   for blocking/threats — solver-graded move quality as shaped reward is a
+   registered-experiment candidate); symmetric augmentation; terminal-ratio
+   buffer; PER; epsilon schedule; longer training with more iterations.
+   KNOWN HARNESS GAP: no forked-lineage A/B (two arms from one parent) —
+   needed for clean mechanism attribution (see exp-003 confound note).
 5. Interaction interface: `python -m harness play` — play the current champion
    in the terminal (design added to roadmap Phase 0: optional Task.interact()
    hook + generic two-player terminal loop). Small; good end-of-day item —

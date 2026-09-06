@@ -31,8 +31,13 @@ def main() -> None:
     p_run.add_argument("--seed", type=int, default=0)
     p_run.add_argument("--iterations", type=int, default=5)
     p_run.add_argument("--episodes-per-iteration", type=int, default=200)
-    p_run.add_argument("--gate-games", type=int, default=50)
-    p_run.add_argument("--benchmark-games", type=int, default=200)
+    p_run.add_argument("--gate-games", type=int, default=200)
+    p_run.add_argument("--task-version", type=int, choices=[1, 2], default=2,
+                       help="2 = solver-ladder benchmark (default), 1 = legacy vs-random")
+    p_run.add_argument("--benchmark-games", type=int, default=200,
+                       help="games for the v1 legacy benchmark only")
+    p_run.add_argument("--frontier-fraction", type=float, default=0.0,
+                       help="fraction of training episodes vs the frontier-depth solver")
 
     p_rep = sub.add_parser("report", help="mastery narrative for a policy")
     p_rep.add_argument("--store", default="store")
@@ -70,9 +75,15 @@ def main() -> None:
             iterations=args.iterations,
             episodes_per_iteration=args.episodes_per_iteration,
             gate_games=args.gate_games,
+            frontier_opponent_fraction=args.frontier_fraction,
             trainer=TrainerConfig(seed=args.seed),
         )
-        task = Connect4Task(benchmark_games=args.benchmark_games)
+        if args.task_version == 2:
+            from .tasks.connect4_ladder import Connect4LadderTask
+
+            task = Connect4LadderTask()
+        else:
+            task = Connect4Task(benchmark_games=args.benchmark_games)
         summary = run_loop(task, store, cfg)
         print(json.dumps(summary, indent=2))
     elif args.command == "report":

@@ -24,8 +24,9 @@ from .policy_archive import Archive
 from .policy_evaluator import Evaluator
 from .interfaces import QFunction, Task
 from .experiment_registry import ExperimentRegistry
+from .stats import Z_95
 from .task_registry import TaskRegistry
-from .promotion_gate import double_gate
+from .promotion_gate import statistical_double_gate
 
 
 class Store:
@@ -51,10 +52,17 @@ class LoopConfig:
     seed: int = 0
     iterations: int = 5
     episodes_per_iteration: int = 200
-    gate_games: int = 50
-    gate_win_rate_threshold: float = 0.55
+    gate_games: int = 200
     gate_temperature: float = 0.3
-    benchmark_regression_tolerance: float = 0.02
+    # One-sided confidence controls: z=1.645 -> ~5% false-positive rate per
+    # gate decision. False negatives shrink with gate_games (see stats.py).
+    z_promote: float = Z_95
+    z_regress: float = Z_95
+    # Fraction of training episodes played against the solver at the
+    # champion's current benchmark frontier depth (0.0 = pure self-play,
+    # the baseline). A component change: flip it only inside a registered
+    # experiment.
+    frontier_opponent_fraction: float = 0.0
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
 
 
@@ -98,13 +106,32 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
     if incumbent_id is not None:
         champion_module, champion_meta = store.archive.load_policy(incumbent_id)
         champion_id = incumbent_id
-        champion_bench = champion_meta["eval_records"][-1]["score"]
         try:
             trainer.net.load_state_dict(champion_module.state_dict())
         except RuntimeError:
             trainer.net.load_state_dict(champion_module.state_dict(), strict=False)
         trainer.target.load_state_dict(trainer.net.state_dict())
         champion_q = _module_q_function(champion_module)
+        # Scores are only comparable within one benchmark version. If the
+        # incumbent was last scored under a different benchmark, re-measure
+        # it on the CURRENT one rather than comparing apples to oranges.
+        prior = next(
+            (
+                r
+                for r in reversed(champion_meta["eval_records"])
+                if r.get("benchmark_ref") == task.benchmark.ref
+            ),
+            None,
+        )
+        if prior is not None:
+            champion_bench, champion_detail = prior["score"], prior.get("detail", {})
+        else:
+            rebench = task.benchmark.score(champion_q)
+            champion_bench, champion_detail = rebench.score, rebench.detail
+            print(
+                f"[{cfg.experiment_id}] incumbent {champion_id} re-benchmarked on "
+                f"{task.benchmark.ref}: {champion_bench:.3f}"
+            )
     else:
         champion_id = store.archive.next_policy_id(task.task_id)
         bench = task.benchmark.score(trainer.q_function())
@@ -131,11 +158,20 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
         store.experiments.add_output_policy(cfg.experiment_id, champion_id)
         store.archive.record_promotion(task.task_id, champion_id, "initial champion (gen 0)")
         store.archive.record_epitaph(champion_id, "gen 0: untrained seed champion")
-        champion_bench = bench.score
+        champion_bench, champion_detail = bench.score, bench.detail
         champion_module = trainer.scripted()
         champion_q = _module_q_function(champion_module)
 
     generation = store.archive.get_entry(champion_id).get("generation", 0)
+    bench_games = champion_detail.get("games_total", champion_detail.get("games", 100))
+
+    # Optional frontier-solver training opponent (component change, gated by
+    # config; see LoopConfig.frontier_opponent_fraction).
+    def frontier_opponent_act():
+        from .tasks.connect4_solver import SolverOpponent
+
+        depth = int(champion_detail.get("frontier_depth", 1))
+        return SolverOpponent(depth=depth), depth
 
     telemetry: Dict = {
         "experiment_id": cfg.experiment_id,
@@ -148,9 +184,20 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
     for iteration in range(cfg.iterations):
         # -- train --------------------------------------------------------
         losses: List[float] = []
-        for _ in range(cfg.episodes_per_iteration):
+        solver_opp, frontier_depth = (
+            frontier_opponent_act() if cfg.frontier_opponent_fraction > 0 else (None, None)
+        )
+        period = (
+            max(1, round(1 / cfg.frontier_opponent_fraction))
+            if cfg.frontier_opponent_fraction > 0
+            else 0
+        )
+        for ep in range(cfg.episodes_per_iteration):
             env = task.make_env()
-            stats = trainer.play_episode(env, opponent_q=champion_q)
+            if solver_opp is not None and period and ep % period == 0:
+                stats = trainer.play_episode(env, opponent_q=None, opponent_act=solver_opp.act)
+            else:
+                stats = trainer.play_episode(env, opponent_q=champion_q)
             if stats.losses:
                 losses.append(float(np.mean(stats.losses)))
         telemetry["episode_loss_means"].append(float(np.mean(losses)) if losses else None)
@@ -168,12 +215,15 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
         bench = task.benchmark.score(trainer.q_function())
 
         # -- select ---------------------------------------------------------
-        decision = double_gate(
-            challenger_win_rate=h2h.win_rate,
+        decision = statistical_double_gate(
+            challenger_h2h_score=h2h.score,
+            h2h_games=h2h.games,
             challenger_benchmark=bench.score,
+            challenger_benchmark_games=bench.detail.get("games_total", bench_games),
             champion_benchmark=champion_bench,
-            win_rate_threshold=cfg.gate_win_rate_threshold,
-            benchmark_regression_tolerance=cfg.benchmark_regression_tolerance,
+            champion_benchmark_games=bench_games,
+            z_promote=cfg.z_promote,
+            z_regress=cfg.z_regress,
         )
 
         # -- archive (win or lose) -------------------------------------------
@@ -191,8 +241,9 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
                         "task_ref": task.ref,
                         "benchmark_ref": "head-to-head",
                         "opponent": champion_id,
-                        "score": h2h.win_rate,
-                        "detail": {"wins": h2h.wins, "losses": h2h.losses, "draws": h2h.draws},
+                        "score": h2h.score,
+                        "detail": {"wins": h2h.wins, "losses": h2h.losses, "draws": h2h.draws,
+                                   "games": h2h.games},
                     },
                     {
                         "task_ref": task.ref,
@@ -209,7 +260,7 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
         if decision.promote:
             store.archive.record_promotion(task.task_id, challenger_id, decision.reason)
             champion_id = challenger_id
-            champion_bench = bench.score
+            champion_bench, champion_detail = bench.score, bench.detail
             champion_module = trainer.scripted()
             champion_q = _module_q_function(champion_module)
             generation += 1
@@ -218,24 +269,30 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
             trainer.eps = min(cfg.trainer.eps_start, trainer.eps + 0.1)
 
         mastered = champion_bench >= task.mastery_threshold
+        frontier = bench.detail.get("frontier_depth")
         telemetry["iterations"].append(
             {
                 "iteration": iteration,
                 "challenger": challenger_id,
-                "win_rate_vs_champion": h2h.win_rate,
+                "h2h_score_vs_champion": h2h.score,
+                "h2h_games": h2h.games,
                 "benchmark_score": bench.score,
+                "benchmark_detail": bench.detail,
                 "champion_benchmark": champion_bench,
                 "promoted": decision.promote,
                 "reason": decision.reason,
                 "epsilon": trainer.eps,
+                "frontier_training_depth": frontier_depth,
                 "dormant_neurons": trainer.dormant_neuron_fraction(),
                 "mastery": {task.ref: mastered},
             }
         )
         flag = "MASTERED" if mastered else "in progress"
+        frontier_txt = f" frontier_depth={frontier}" if frontier is not None else ""
         print(
-            f"[{cfg.experiment_id}] iter {iteration}: wr_vs_champ={h2h.win_rate:.2f} "
-            f"bench={bench.score:.3f} promoted={decision.promote} | {task.ref}: {flag}"
+            f"[{cfg.experiment_id}] iter {iteration}: h2h={h2h.score:.2f}/{h2h.games} "
+            f"bench={bench.score:.3f}{frontier_txt} promoted={decision.promote} | "
+            f"{task.ref}: {flag}"
         )
         if mastered:
             print(

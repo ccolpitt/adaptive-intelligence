@@ -370,6 +370,31 @@ refusing that trade. Enablers hypothesized, each independently testable:
 - **(f) Capacity growth** — a fixed-size network cannot absorb tasks forever; growing
   capacity as the portfolio grows (progressive-networks lineage) is distinct from
   both (c) and (d).
+- **(g) Shared sensory grounding** — the deepest transfer requires a shared *input
+  interface*, not just a shared trunk. Per-task symbolic encodings (a 6×7 matrix
+  for Connect 4) cap transfer at the strategy level: nothing perceptual can carry
+  over to a task that arrives in pixels, and a 6×7 matrix will never generalize
+  toward throwing, talking, or playing music. Humans do not grow a new set of eyes
+  per skill — a baby and an adult receive essentially the same sensory stream; what
+  the adult has is the accumulated wiring that assigns contextual and semantic
+  meaning to it. The endgame is therefore a policy that is close to input-agnostic:
+  tasks presented through a common sensory format (rendered pixels, later audio),
+  one shared perceptual encoder + world model in front of the trunk, with
+  invariances (piece color, lighting, viewpoint) and intuitive physics (pieces fall
+  down the column, land, rest on the piece below) learned once and reused
+  everywhere. The observable sign of being on the right path: **a single input
+  interface supports more and more tasks.** Per-task adapters (roadmap Phase 2
+  Stage A/B) are scaffolding for cheap early science, not the destination — see
+  roadmap Phase 7 and ADR-004.
+- **(h) Imagination as experience multiplier** — a policy that carries a world model
+  can train on its own imagined rollouts (Ha & Schmidhuber, 2018; Hafner et al.,
+  DreamerV3), buying benchmark improvement with fewer *real* samples; and replaying
+  meaningful experience preferentially — e.g. high-TD-error, surprising transitions
+  (Schaul et al., 2016) — consolidates what matters most per sample. Extends (a)
+  and (e): (a) says a model lets lessons be inferred instead of experienced; (h)
+  says it also multiplies the experience you did pay for. Measured as an exchange
+  rate: how many imagined episodes substitute for one real episode at matched final
+  benchmark score?
 
 ### The Environment Ladder
 
@@ -496,6 +521,7 @@ itself with energy and repairs itself indefinitely, without human intervention.
 - Romera-Paredes, B., et al. (2024). *Mathematical discoveries from program search with large language models.* Nature. (FunSearch.)
 - Rusu, A. A., et al. (2016). *Progressive Neural Networks.*
 - Sabour, S., Frosst, N., & Hinton, G. E. (2017). *Dynamic Routing Between Capsules.* NeurIPS. (Reference frames + voting — nearest ML relative of cortical columns.)
+- Schaul, T., Quan, J., Antonoglou, I., & Silver, D. (2016). *Prioritized Experience Replay.* ICLR. (Replay surprising, high-TD-error transitions preferentially.)
 - Schrittwieser, J., et al. (2020). *Mastering Atari, Go, chess and shogi by planning with a learned model.* Nature. (MuZero.)
 - Shazeer, N., et al. (2017). *Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer.* ICLR.
 - Silver, D., et al. (2018). *A general reinforcement learning algorithm that masters chess, shogi, and Go through self-play.* Science. (AlphaZero.)
