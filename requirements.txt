@@ -1,0 +1,6 @@
+# Pinned exactly: the environment is part of every experiment's conditions.
+# Determinism tests and A/B comparisons assume these versions (Python 3.12).
+# Bumping a pin = a condition change; note it in the experiment registry.
+torch==2.9.0
+numpy==2.3.4
+pytest==9.0.2

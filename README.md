@@ -19,7 +19,50 @@ increasingly sample-efficient at learning the next one.**
 
 ## Status
 
-Phase 0 (loop harness) — not started. Seed material comes from the sibling
-[connect4-rl](../connect4-rl) project: a working champion-challenger self-play loop,
-league tournament player, and experiment registry, to be generalized behind
-domain-agnostic interfaces.
+Phase 0 (loop harness) — **complete and closed end-to-end.** The domain-agnostic
+train → evaluate → select → archive → repeat loop runs on Connect 4 (seed task #1),
+ported and generalized from the sibling [connect4-rl](../connect4-rl) project.
+First experiment (`exp-001-close-the-loop`): one promotion through the double
+gate, benchmark 0.725 → 0.785, verdict recorded. Next: Phase 1, the solver-based
+absolute benchmark (see `STATE.md`).
+
+## Setup (any machine)
+
+Requires Python 3.12.
+
+```bash
+git clone https://github.com/ccolpitt/adaptive-intelligence.git
+cd adaptive-intelligence
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 -m pytest            # fast suite + slow learnability canary (~30 s)
+```
+
+All dependencies are pinned exactly — the environment is part of every
+experiment's conditions. If a pin must change, that's a condition change:
+note it in the experiment registry.
+
+## Usage
+
+```bash
+# Run the improvement loop (one run = one registered experiment):
+python3 -m harness run --store store \
+    --experiment-id exp-002 \
+    --hypothesis "if X, we will see Y" \
+    --changes "the one variable changed"
+
+# Tell the story of how a policy came to be (lineage + hypotheses + verdicts):
+python3 -m harness report --store store --policy connect4-pol-00005
+
+# Record an experiment's verdict (once, immutable):
+python3 -m harness verdict --store store --experiment-id exp-002 \
+    --verdict supported --tldr "one line: what we learned"
+```
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `harness/` | The Phase 0 loop harness (interfaces, loop, archive, registries, evaluator, CLI) |
+| `tests/` | The proof the harness isn't a source of training errors — run before every experiment batch |
+| `store/` | Persistent results, committed to git: `archive/` (append-only policy fossil record), `registry/` (task + experiment JSONL registries), `telemetry/` (training curves). Grows append-only by design; revisit storage (git-LFS / external) when it approaches ~500 MB. |

@@ -1,0 +1,108 @@
+{
+  "experiment_id": "exp-001-close-the-loop",
+  "task_ref": "connect4@v1",
+  "iterations": [
+    {
+      "iteration": 0,
+      "challenger": "connect4-pol-00001",
+      "win_rate_vs_champion": 0.44,
+      "benchmark_score": 0.69,
+      "champion_benchmark": 0.725,
+      "promoted": false,
+      "reason": "rejected: lost to champion (0.44) and regressed on benchmark (0.690 vs 0.725)",
+      "epsilon": 0.37035351607804984,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0868055522441864,
+        "conv.2.weight": 0.0953776016831398,
+        "fc1.weight": 0.1493326872587204,
+        "out.weight": 0.01116071455180645
+      },
+      "mastery": {
+        "connect4@v1": false
+      }
+    },
+    {
+      "iteration": 1,
+      "challenger": "connect4-pol-00002",
+      "win_rate_vs_champion": 0.58,
+      "benchmark_score": 0.7,
+      "champion_benchmark": 0.725,
+      "promoted": false,
+      "reason": "rejected: beat champion (0.58) but REGRESSED on benchmark (0.700 < 0.725 - 0.02) \u2014 the v32 trap, caught",
+      "epsilon": 0.27432345374274825,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0798611119389534,
+        "conv.2.weight": 0.0948350727558136,
+        "fc1.weight": 0.2134660929441452,
+        "out.weight": 0.014508928172290325
+      },
+      "mastery": {
+        "connect4@v1": false
+      }
+    },
+    {
+      "iteration": 2,
+      "challenger": "connect4-pol-00003",
+      "win_rate_vs_champion": 0.52,
+      "benchmark_score": 0.75,
+      "champion_benchmark": 0.725,
+      "promoted": false,
+      "reason": "rejected: lost to champion (0.52 < 0.55)",
+      "epsilon": 0.20319331127260196,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0694444477558136,
+        "conv.2.weight": 0.0975477397441864,
+        "fc1.weight": 0.2809709906578064,
+        "out.weight": 0.0223214291036129
+      },
+      "mastery": {
+        "connect4@v1": false
+      }
+    },
+    {
+      "iteration": 3,
+      "challenger": "connect4-pol-00004",
+      "win_rate_vs_champion": 0.5,
+      "benchmark_score": 0.765,
+      "champion_benchmark": 0.725,
+      "promoted": false,
+      "reason": "rejected: lost to champion (0.50 < 0.55)",
+      "epsilon": 0.1505067145466996,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0538194440305233,
+        "conv.2.weight": 0.0981987863779068,
+        "fc1.weight": 0.3345889151096344,
+        "out.weight": 0.0245535708963871
+      },
+      "mastery": {
+        "connect4@v1": false
+      }
+    },
+    {
+      "iteration": 4,
+      "challenger": "connect4-pol-00005",
+      "win_rate_vs_champion": 0.62,
+      "benchmark_score": 0.785,
+      "champion_benchmark": 0.785,
+      "promoted": true,
+      "reason": "promoted: beat champion (0.62 >= 0.55) and held benchmark (0.785 vs 0.725)",
+      "epsilon": 0.21148138185145116,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0572916679084301,
+        "conv.2.weight": 0.1039496511220932,
+        "fc1.weight": 0.3751569390296936,
+        "out.weight": 0.0234375
+      },
+      "mastery": {
+        "connect4@v1": false
+      }
+    }
+  ],
+  "episode_loss_means": [
+    0.1366461413646383,
+    0.041725687031478935,
+    0.016275643847960358,
+    0.011427786969967808,
+    0.009272599106576915
+  ]
+}

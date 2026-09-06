@@ -44,8 +44,9 @@ is next
   canary (DQN must learn to beat fixed-column within 600 episodes — passes in ~10s).
   Re-run the suite before every experiment batch: it is the proof the harness is
   not a source of training errors.
-- **Persistent store** at `store/` (archive/, registry/, telemetry/) — currently
-  NOT gitignored; decide whether the fossil record lives in git or just on disk.
+- **Persistent store** at `store/` (archive/, registry/, telemetry/) — committed
+  to git so the fossil record travels with the repo (revisit: LFS/external at
+  ~500 MB).
 - Docs updated this session: roadmap (select = double gate; task registry;
   benchmark precisely defined; experiments first-class with policy_refs; Phase 0
   test spec; Phase 2 adapter design; Phase 3a/3b intrinsic motivation + free play;
@@ -71,8 +72,11 @@ is next
 Goal: (1) Connect 4 solver benchmark working, (2) begin hypothesis-driven mastery
 campaign in the harness. In order:
 
-0. Housekeeping: commit everything (currently NOTHING is committed); decide
-   store/-in-git question; optionally pin requirements.txt.
+0. Housekeeping: DONE 2026-08-31/09-01 — harness+tests+docs committed and pushed;
+   store/ committed to git (fossil record travels with the repo; revisit trigger:
+   move policy binaries to LFS/external when store/ nears ~500 MB); requirements.txt
+   pinned exactly (torch 2.9.0, numpy 2.3.4, pytest 9.0.2, Python 3.12); README has
+   full any-machine setup + usage instructions.
 1. Solver: bitboard negamax + alpha-beta + transposition table. Verify vs known
    ground truth (first-player win, center opening; tactical unit tests). Exact
    solving within bounded remaining depth is sufficient for day one.
@@ -99,7 +103,6 @@ design vs shared-trunk-only confound); Phase 2 task family.
 ## Open questions for the human
 
 - License choice for the repo
-- Should `store/` (the fossil record, includes .pt binaries) be committed to git
-  or kept disk-only with backups?
-- Python deps are used system-wide (torch 2.9, numpy 2.3, pytest 9) — pin a
-  requirements.txt?
+
+*(Resolved 2026-09-01: store/ IS committed — portability across machines decided
+it; requirements.txt pinned exactly for the same reason.)*

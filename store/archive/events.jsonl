@@ -1,0 +1,8 @@
+{"at": "2026-08-31T19:58:50.639328+00:00", "kind": "promotion", "policy_id": "connect4-pol-00000", "reason": "initial champion (gen 0)", "task_id": "connect4"}
+{"at": "2026-08-31T19:58:50.639727+00:00", "epitaph": "gen 0: untrained seed champion", "kind": "epitaph", "policy_id": "connect4-pol-00000"}
+{"at": "2026-08-31T19:58:58.131566+00:00", "epitaph": "rejected: lost to champion (0.44) and regressed on benchmark (0.690 vs 0.725)", "kind": "epitaph", "policy_id": "connect4-pol-00001"}
+{"at": "2026-08-31T19:59:05.832010+00:00", "epitaph": "rejected: beat champion (0.58) but REGRESSED on benchmark (0.700 < 0.725 - 0.02) \u2014 the v32 trap, caught", "kind": "epitaph", "policy_id": "connect4-pol-00002"}
+{"at": "2026-08-31T19:59:13.213188+00:00", "epitaph": "rejected: lost to champion (0.52 < 0.55)", "kind": "epitaph", "policy_id": "connect4-pol-00003"}
+{"at": "2026-08-31T19:59:20.619412+00:00", "epitaph": "rejected: lost to champion (0.50 < 0.55)", "kind": "epitaph", "policy_id": "connect4-pol-00004"}
+{"at": "2026-08-31T19:59:27.881770+00:00", "epitaph": "promoted: beat champion (0.62 >= 0.55) and held benchmark (0.785 vs 0.725)", "kind": "epitaph", "policy_id": "connect4-pol-00005"}
+{"at": "2026-08-31T19:59:27.882108+00:00", "kind": "promotion", "policy_id": "connect4-pol-00005", "reason": "promoted: beat champion (0.62 >= 0.55) and held benchmark (0.785 vs 0.725)", "task_id": "connect4"}
