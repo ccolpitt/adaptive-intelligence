@@ -57,6 +57,10 @@ python3 -m harness report --store store --policy connect4-pol-00005
 # Record an experiment's verdict (once, immutable):
 python3 -m harness verdict --store store --experiment-id exp-002 \
     --verdict supported --tldr "one line: what we learned"
+
+# Play Connect 4 against the solver oracle (see what search depth buys —
+# try --depth 2 vs --depth 10; change mid-game with 'd N'):
+python3 -m harness play-solver --depth 8 --first human
 ```
 
 ## Repository layout

@@ -77,9 +77,14 @@ campaign in the harness. In order:
    move policy binaries to LFS/external when store/ nears ~500 MB); requirements.txt
    pinned exactly (torch 2.9.0, numpy 2.3.4, pytest 9.0.2, Python 3.12); README has
    full any-machine setup + usage instructions.
-1. Solver: bitboard negamax + alpha-beta + transposition table. Verify vs known
-   ground truth (first-player win, center opening; tactical unit tests). Exact
-   solving within bounded remaining depth is sufficient for day one.
+1. Solver: DONE 2026-09-01 — bitboard negamax + alpha-beta + bound-flagged
+   transposition table (`harness/tasks/connect4_solver.py`); threat-count
+   heuristic at the depth horizon; exact win/loss/draw values with ply distance
+   when search completes; `SolverOpponent` wrapper = depth-ladder rungs.
+   11 tests incl. env cross-validation property test, tactics, exact endgame
+   values, ladder ordering. Depth 10 ≈ 0.5 s from the empty board (Python).
+   Interactive UX: `python -m harness play-solver --depth N` (per-move solver
+   evals shown; 'd N' changes depth mid-game). LICENSE: Apache-2.0 added.
 2. `connect4-benchmark@v1`: move accuracy over ~500 fixed seeded positions +
    depth-ladder win rates (roadmap Phase 1 spec). NOTE: new benchmark ⇒ register
    task version `connect4@v2`; old scores stay attributed to old versions.

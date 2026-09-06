@@ -38,6 +38,11 @@ def main() -> None:
     p_rep.add_argument("--store", default="store")
     p_rep.add_argument("--policy", required=True)
 
+    p_play = sub.add_parser("play-solver", help="play Connect 4 vs the solver in the terminal")
+    p_play.add_argument("--depth", type=int, default=8,
+                        help="search depth in plies (try 2 vs 10; change in-game with 'd N')")
+    p_play.add_argument("--first", choices=["human", "solver"], default="human")
+
     p_ver = sub.add_parser("verdict", help="record an experiment verdict (once, immutable)")
     p_ver.add_argument("--store", default="store")
     p_ver.add_argument("--experiment-id", required=True)
@@ -46,6 +51,13 @@ def main() -> None:
     p_ver.add_argument("--results", default="{}", help="JSON dict of result metrics")
 
     args = parser.parse_args()
+
+    if args.command == "play-solver":
+        from .interactive_play import play_solver
+
+        play_solver(depth=args.depth, human_first=args.first == "human")
+        return
+
     store = Store(args.store)
 
     if args.command == "run":
