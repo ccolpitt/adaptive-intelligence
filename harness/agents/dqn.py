@@ -63,15 +63,30 @@ Transition = Tuple[np.ndarray, int, float, np.ndarray, np.ndarray, bool]
 
 
 class ReplayBuffer:
-    def __init__(self, capacity: int, seed: int):
+    """Uniform replay, optionally guaranteeing a fraction of each batch is
+    terminal transitions (``terminal_fraction`` > 0). Sparse +-1 rewards only
+    exist at terminals; uniform sampling starves the value function of them —
+    the connect4-rl precursor diagnosed this and used a 30% terminal quota."""
+
+    def __init__(self, capacity: int, seed: int, terminal_fraction: float = 0.0):
         self.buffer: Deque[Transition] = deque(maxlen=capacity)
+        self.terminals: Deque[Transition] = deque(maxlen=capacity)
+        self.terminal_fraction = terminal_fraction
         self.rng = random.Random(seed)
 
     def add(self, t: Transition) -> None:
         self.buffer.append(t)
+        if t[5]:
+            self.terminals.append(t)
 
     def sample(self, batch_size: int) -> List[Transition]:
-        return self.rng.sample(self.buffer, batch_size)
+        k = 0
+        if self.terminal_fraction > 0 and self.terminals:
+            k = min(int(round(batch_size * self.terminal_fraction)), len(self.terminals))
+        rest = self.rng.sample(self.buffer, batch_size - k)
+        if k:
+            rest = rest + self.rng.sample(self.terminals, k)
+        return rest
 
     def __len__(self) -> int:
         return len(self.buffer)
@@ -92,6 +107,11 @@ class TrainerConfig:
     eps_decay: float = 0.999
     channels: int = 32
     hidden: int = 128
+    # Upgrades, each default-off (the dumb baseline) and flipped only inside
+    # a registered experiment, one at a time:
+    store_opponent_transitions: bool = False  # exp-004: off-policy data from both seats
+    mirror_augmentation: bool = False  # exp-005: left-right symmetry, 2x data
+    terminal_fraction: float = 0.0  # exp-007: terminal quota per batch (precursor used 0.3)
 
 
 @dataclass
@@ -117,7 +137,9 @@ class DQNTrainer:
         self.optimizer = torch.optim.Adam(
             self.net.parameters(), lr=config.lr, weight_decay=config.weight_decay
         )
-        self.buffer = ReplayBuffer(config.buffer_capacity, config.seed)
+        self.buffer = ReplayBuffer(
+            config.buffer_capacity, config.seed, config.terminal_fraction
+        )
         self.eps = config.eps_start
         self.episodes_done = 0
         self.rng = np.random.default_rng(config.seed)
@@ -159,15 +181,19 @@ class DQNTrainer:
         is either a frozen Q-function played greedily (champion) or a
         scripted ``opponent_act``. Learner's side alternates by episode.
 
-        Both players' transitions from the LEARNER's net's point of view are
-        not stored — only the learner's own transitions are (dumb baseline;
-        symmetric/both-player storage is a registered later experiment).
-        Loss attribution: if the opponent wins, the learner's last transition
-        is rewritten to reward -1, done True, before entering the buffer.
+        By default only the learner's own transitions are stored (dumb
+        baseline). With ``store_opponent_transitions`` the opponent's moves
+        are stored too — valid off-policy data: a transition is a fact about
+        the game regardless of who chose the move, and the Bellman target is
+        computed by OUR net (exp-004).
+        Loss attribution (the connect4-rl post-hoc-patch fix): at game end
+        the LOSING side's final transition is rewritten to reward -1,
+        done True, whichever side that is, before entering the buffer.
         """
         learner_is_p1 = self.episodes_done % 2 == 0
         obs = env.reset()
         pending: List[Transition] = []
+        movers: List[int] = []  # +1 / -1, aligned with pending
         moves = 0
 
         def legal_mask() -> np.ndarray:
@@ -177,36 +203,41 @@ class DQNTrainer:
 
         while True:
             legal = env.legal_actions()
-            learner_to_move = (env.current_player == 1) == learner_is_p1
+            mover = env.current_player
+            learner_to_move = (mover == 1) == learner_is_p1
             if learner_to_move:
                 action = self.select_action(obs, legal)
-                result = env.step(action)
+            elif opponent_act is not None:
+                action = opponent_act(obs, legal)
+            else:
+                q = opponent_q(obs)
+                masked = np.full(self.n_actions, -np.inf, dtype=np.float64)
+                masked[legal] = q[legal]
+                action = int(np.argmax(masked))
+            result = env.step(action)
+            if learner_to_move or self.cfg.store_opponent_transitions:
                 pending.append(
                     (obs, action, result.reward, result.next_obs, legal_mask(), result.done)
                 )
-            else:
-                if opponent_act is not None:
-                    action = opponent_act(obs, legal)
-                else:
-                    q = opponent_q(obs)
-                    masked = np.full(self.n_actions, -np.inf, dtype=np.float64)
-                    masked[legal] = q[legal]
-                    action = int(np.argmax(masked))
-                result = env.step(action)
+                movers.append(mover)
             moves += 1
             obs = result.next_obs
             if result.done:
                 break
 
-        # Explicit loss attribution (the connect4-rl post-hoc-patch fix):
-        learner_player = 1 if learner_is_p1 else -1
-        if result.winner is not None and result.winner != 0 and result.winner != learner_player:
-            if pending:
-                o, a, _, no, m, _ = pending[-1]
-                pending[-1] = (o, a, -1.0, no, m, True)
+        # Explicit loss attribution: rewrite the loser's final transition.
+        if result.winner is not None and result.winner != 0:
+            loser = -result.winner
+            for i in range(len(pending) - 1, -1, -1):
+                if movers[i] == loser:
+                    o, a, _, no, m, _ = pending[i]
+                    pending[i] = (o, a, -1.0, no, m, True)
+                    break
 
         for t in pending:
             self.buffer.add(t)
+            if self.cfg.mirror_augmentation:
+                self.buffer.add(self._mirror(t))
 
         self.episodes_done += 1
         self.eps = max(self.cfg.eps_end, self.eps * self.cfg.eps_decay)
@@ -219,6 +250,19 @@ class DQNTrainer:
         if self.episodes_done % self.cfg.target_update_every == 0:
             self.target.load_state_dict(self.net.state_dict())
         return stats
+
+    def _mirror(self, t: Transition) -> Transition:
+        """Left-right reflection: Connect 4 is symmetric, so every transition
+        teaches its mirror for free (exp-005)."""
+        o, a, r, no, m, d = t
+        return (
+            np.flip(o, axis=2).copy(),
+            self.n_actions - 1 - a,
+            r,
+            np.flip(no, axis=2).copy(),
+            np.flip(m).copy(),
+            d,
+        )
 
     # -- learning -------------------------------------------------------
 

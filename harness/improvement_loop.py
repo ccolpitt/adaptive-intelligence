@@ -63,6 +63,11 @@ class LoopConfig:
     # the baseline). A component change: flip it only inside a registered
     # experiment.
     frontier_opponent_fraction: float = 0.0
+    # Diverse training opponents (exp-006): cycle champion, champion,
+    # tactical fixture, random — instead of champion-only. Targets the
+    # exp-002 finding (self-play data lacks competent threats) at a
+    # difficulty the policy can actually learn from (exp-003's lesson).
+    diverse_opponents: bool = False
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
 
 
@@ -181,6 +186,15 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
     }
     promotions = 0
 
+    diverse = None
+    if cfg.diverse_opponents:
+        from .scripted_opponents import OneStepWinOpponent, RandomOpponent
+
+        diverse = {
+            "tactic": OneStepWinOpponent(seed=cfg.seed + 11),
+            "random": RandomOpponent(seed=cfg.seed + 7),
+        }
+
     for iteration in range(cfg.iterations):
         # -- train --------------------------------------------------------
         losses: List[float] = []
@@ -196,6 +210,10 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
             env = task.make_env()
             if solver_opp is not None and period and ep % period == 0:
                 stats = trainer.play_episode(env, opponent_q=None, opponent_act=solver_opp.act)
+            elif diverse is not None and ep % 4 == 1:
+                stats = trainer.play_episode(env, opponent_q=None, opponent_act=diverse["tactic"].act)
+            elif diverse is not None and ep % 4 == 3:
+                stats = trainer.play_episode(env, opponent_q=None, opponent_act=diverse["random"].act)
             else:
                 stats = trainer.play_episode(env, opponent_q=champion_q)
             if stats.losses:
