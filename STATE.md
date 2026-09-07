@@ -129,17 +129,34 @@ campaign in the harness. In order:
      challenger half-random; volume itself retested clean in exp-009)
    - exp-009 BIG SWING (both-players + diverse opps + 4500 eps + 50k buffer):
      INCONCLUSIVE (+0.012, best absolute 0.083, 5 promotions, no breakout)
-   CAMPAIGN CONCLUSION: data-quantity/opponent/volume levers each move the
-   ladder ~+0.01-0.03; nothing clears the +0.09 detectability bar. The
-   bottleneck is likely elsewhere. Next single-variable hypotheses, in order:
-   (a) reward density — solver-graded move quality as shaped reward (ladder
-       guards against reward hacking), or simpler: reward for blocking/making
-       immediate threats;
-   (b) network capacity — 2x32-filter convs may be too small to encode threat
-       patterns; try 64 filters / 3 layers;
-   (c) inference-time lookahead — Q-net as evaluator inside a 2-ply search
-       (ADR-003 direction); philosophically loaded (grafted vs learned), needs
-       its own ADR discussion first.
+   Second wave (exp-010..012), diagnosis-driven:
+   - exp-010 capacity probe (REFUTED, decisive): current 2conv-32ch net fits
+     3200 solver-labeled positions to 100% TRAIN accuracy (large 3conv-64ch
+     identical; val 0.405 vs 0.425, both ~chance-adjacent). CAPACITY IS NOT
+     THE BOTTLENECK; the signal is. Bigger-net loop experiments deprioritized.
+   - exp-011 tactical shaping alone (REFUTED at 1500 eps): -0.5 for foregone
+     win / failed block, warm-started → h2h collapsed to 0.27-0.34. Mechanism:
+     warm-started value function calibrated on pure win/lose fights the
+     re-scaled reward. (Shaping helper: shaping_delta in agents/dqn.py;
+     verified -1 lands on the failed-block move; foregone win previously had
+     NO signal at all.)
+   - exp-012 signal package (INCONCLUSIVE, most important result so far):
+     shaping + cold_start + both-players + diverse opponents + 4500 eps +
+     50k buffer. Cold-started policy climbed random → ladder 0.116 (peak,
+     iter 11) — highest absolute score of the program, beating an incumbent
+     that took ~10500 cumulative episodes to reach 0.083, in ~3600 episodes.
+     Margin +0.033 < detectable +0.09 → inconclusive. Follow-ups queued:
+     (a) decomposition: shaping+cold_start ALONE (is the pair sufficient?);
+     (b) replicate exp-012 with 2-3 seeds to beat the noise bar;
+     (c) longer run — was iter-11 a peak or a trend?
+   GATE DESIGN FINDING (needs human decision): exp-012's iter-11 challenger
+   EXCEEDED the incumbent on the benchmark (0.116 vs 0.083) but was blocked
+   by the relative gate (h2h 0.41) — the double gate's reverse-v32 failure
+   mode: absolutely-stronger-but-stylistically-different policies cannot
+   promote. Options: (i) absolute-dominance bypass (promote if significantly
+   better on benchmark regardless of h2h); (ii) league-style eval vs multiple
+   archived opponents instead of only the incumbent; (iii) keep as is.
+   Decide before exp-013.
    KNOWN HARNESS GAPS: no forked-lineage A/B (clean mechanism attribution);
    telemetry file lost if a run is interrupted (results survive in archive —
    recovered exp-008 this way — but write telemetry incrementally).

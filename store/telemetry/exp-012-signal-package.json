@@ -1,0 +1,548 @@
+{
+  "experiment_id": "exp-012-signal-package",
+  "task_ref": "connect4@v2",
+  "iterations": [
+    {
+      "iteration": 0,
+      "challenger": "connect4-pol-00071",
+      "h2h_score_vs_champion": 0.31,
+      "h2h_games": 200,
+      "benchmark_score": 0.029761904761904764,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1786,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.31 over 200 games (95% LB 0.259) LB <= 0.5 AND significant benchmark regression (bench 0.030 vs champion 0.083)",
+      "epsilon": 0.37035351607804984,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.09375,
+        "conv.2.weight": 0.0925564244389534,
+        "fc1.weight": 0.1014404296875,
+        "out.weight": 0.015625
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 1,
+      "challenger": "connect4-pol-00072",
+      "h2h_score_vs_champion": 0.335,
+      "h2h_games": 200,
+      "benchmark_score": 0.023809523809523808,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1429,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.34 over 200 games (95% LB 0.283) LB <= 0.5 AND significant benchmark regression (bench 0.024 vs champion 0.083)",
+      "epsilon": 0.27432345374274825,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0850694477558136,
+        "conv.2.weight": 0.0950520858168602,
+        "fc1.weight": 0.1215239018201828,
+        "out.weight": 0.0167410708963871
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 2,
+      "challenger": "connect4-pol-00073",
+      "h2h_score_vs_champion": 0.305,
+      "h2h_games": 200,
+      "benchmark_score": 0.03571428571428571,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.2143,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.30 over 200 games (95% LB 0.254) LB <= 0.5 AND significant benchmark regression (bench 0.036 vs champion 0.083)",
+      "epsilon": 0.20319331127260196,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0833333358168602,
+        "conv.2.weight": 0.0889756977558136,
+        "fc1.weight": 0.1385265588760376,
+        "out.weight": 0.01897321455180645
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 3,
+      "challenger": "connect4-pol-00074",
+      "h2h_score_vs_champion": 0.365,
+      "h2h_games": 200,
+      "benchmark_score": 0.029761904761904757,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1429,
+          "2": 0.0357,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.36 over 200 games (95% LB 0.311) LB <= 0.5 AND significant benchmark regression (bench 0.030 vs champion 0.083)",
+      "epsilon": 0.1505067145466996,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0798611119389534,
+        "conv.2.weight": 0.0903862863779068,
+        "fc1.weight": 0.1561395525932312,
+        "out.weight": 0.0167410708963871
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 4,
+      "challenger": "connect4-pol-00075",
+      "h2h_score_vs_champion": 0.35,
+      "h2h_games": 200,
+      "benchmark_score": 0.029761904761904764,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1786,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.35 over 200 games (95% LB 0.297) LB <= 0.5 AND significant benchmark regression (bench 0.030 vs champion 0.083)",
+      "epsilon": 0.11148138185145114,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0729166641831398,
+        "conv.2.weight": 0.0877821147441864,
+        "fc1.weight": 0.1713809072971344,
+        "out.weight": 0.014508928172290325
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 5,
+      "challenger": "connect4-pol-00076",
+      "h2h_score_vs_champion": 0.415,
+      "h2h_games": 200,
+      "benchmark_score": 0.03571428571428571,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.2143,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.41 over 200 games (95% LB 0.359) LB <= 0.5 AND significant benchmark regression (bench 0.036 vs champion 0.083)",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0746527761220932,
+        "conv.2.weight": 0.0853949636220932,
+        "fc1.weight": 0.182466059923172,
+        "out.weight": 0.01785714365541935
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 6,
+      "challenger": "connect4-pol-00077",
+      "h2h_score_vs_champion": 0.375,
+      "h2h_games": 200,
+      "benchmark_score": 0.023809523809523808,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1429,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.38 over 200 games (95% LB 0.321) LB <= 0.5 AND significant benchmark regression (bench 0.024 vs champion 0.083)",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0763888880610466,
+        "conv.2.weight": 0.0823567733168602,
+        "fc1.weight": 0.1885753870010376,
+        "out.weight": 0.015625
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 7,
+      "challenger": "connect4-pol-00078",
+      "h2h_score_vs_champion": 0.46,
+      "h2h_games": 200,
+      "benchmark_score": 0.029761904761904757,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1429,
+          "2": 0.0357,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.46 over 200 games (95% LB 0.403) LB <= 0.5 AND significant benchmark regression (bench 0.030 vs champion 0.083)",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0729166641831398,
+        "conv.2.weight": 0.0876736119389534,
+        "fc1.weight": 0.1933942586183548,
+        "out.weight": 0.010044642724096775
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 8,
+      "challenger": "connect4-pol-00079",
+      "h2h_score_vs_champion": 0.525,
+      "h2h_games": 200,
+      "benchmark_score": 0.059523809523809514,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.25,
+          "2": 0.0714,
+          "3": 0.0,
+          "4": 0.0357,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected (not proven yet): h2h 0.53 over 200 games (95% LB 0.467) LB <= 0.5; improvement, if real, is below the detectable effect at n=200",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0677083358168602,
+        "conv.2.weight": 0.0825737863779068,
+        "fc1.weight": 0.1974574476480484,
+        "out.weight": 0.013392857275903225
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 9,
+      "challenger": "connect4-pol-00080",
+      "h2h_score_vs_champion": 0.48,
+      "h2h_games": 200,
+      "benchmark_score": 0.035714285714285705,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.1071,
+          "2": 0.0,
+          "3": 0.0714,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0357
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected: h2h 0.48 over 200 games (95% LB 0.423) LB <= 0.5 AND significant benchmark regression (bench 0.036 vs champion 0.083)",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0798611119389534,
+        "conv.2.weight": 0.0865885391831398,
+        "fc1.weight": 0.2037992924451828,
+        "out.weight": 0.01785714365541935
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 10,
+      "challenger": "connect4-pol-00081",
+      "h2h_score_vs_champion": 0.41,
+      "h2h_games": 200,
+      "benchmark_score": 0.07142857142857142,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.3214,
+          "2": 0.0,
+          "3": 0.0357,
+          "4": 0.0357,
+          "5": 0.0357,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected (not proven yet): h2h 0.41 over 200 games (95% LB 0.354) LB <= 0.5; improvement, if real, is below the detectable effect at n=200",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0486111119389534,
+        "conv.2.weight": 0.0836588516831398,
+        "fc1.weight": 0.2095540314912796,
+        "out.weight": 0.02008928544819355
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 11,
+      "challenger": "connect4-pol-00082",
+      "h2h_score_vs_champion": 0.41,
+      "h2h_games": 200,
+      "benchmark_score": 0.11607142857142859,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.5179,
+          "2": 0.0893,
+          "3": 0.0179,
+          "4": 0.0357,
+          "5": 0.0,
+          "6": 0.0357
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected (not proven yet): h2h 0.41 over 200 games (95% LB 0.354) LB <= 0.5; improvement, if real, is below the detectable effect at n=200",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0677083358168602,
+        "conv.2.weight": 0.0837673619389534,
+        "fc1.weight": 0.2131521999835968,
+        "out.weight": 0.0223214291036129
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 12,
+      "challenger": "connect4-pol-00083",
+      "h2h_score_vs_champion": 0.49,
+      "h2h_games": 200,
+      "benchmark_score": 0.07738095238095237,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.3214,
+          "2": 0.0357,
+          "3": 0.0357,
+          "4": 0.0357,
+          "5": 0.0357,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected (not proven yet): h2h 0.49 over 200 games (95% LB 0.432) LB <= 0.5; improvement, if real, is below the detectable effect at n=200",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0538194440305233,
+        "conv.2.weight": 0.0855034738779068,
+        "fc1.weight": 0.21533203125,
+        "out.weight": 0.0245535708963871
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 13,
+      "challenger": "connect4-pol-00084",
+      "h2h_score_vs_champion": 0.51,
+      "h2h_games": 200,
+      "benchmark_score": 0.08333333333333333,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.3214,
+          "2": 0.1071,
+          "3": 0.0357,
+          "4": 0.0,
+          "5": 0.0357,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected (not proven yet): h2h 0.51 over 200 games (95% LB 0.452) LB <= 0.5; improvement, if real, is below the detectable effect at n=200",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0572916679084301,
+        "conv.2.weight": 0.0864800363779068,
+        "fc1.weight": 0.2201509028673172,
+        "out.weight": 0.0245535708963871
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    },
+    {
+      "iteration": 14,
+      "challenger": "connect4-pol-00085",
+      "h2h_score_vs_champion": 0.45,
+      "h2h_games": 200,
+      "benchmark_score": 0.07738095238095238,
+      "benchmark_detail": {
+        "per_rung": {
+          "1": 0.4643,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "frontier_depth": 1,
+        "games_per_rung": 28,
+        "games_total": 168,
+        "mastery_per_rung": 0.9
+      },
+      "champion_benchmark": 0.08333333333333333,
+      "promoted": false,
+      "reason": "rejected (not proven yet): h2h 0.45 over 200 games (95% LB 0.393) LB <= 0.5; improvement, if real, is below the detectable effect at n=200",
+      "epsilon": 0.1,
+      "frontier_training_depth": null,
+      "dormant_neurons": {
+        "conv.0.weight": 0.0572916679084301,
+        "conv.2.weight": 0.0857204869389534,
+        "fc1.weight": 0.2234584242105484,
+        "out.weight": 0.02120535634458065
+      },
+      "mastery": {
+        "connect4@v2": false
+      }
+    }
+  ],
+  "episode_loss_means": [
+    0.18874884814150253,
+    0.07086207093360523,
+    0.04631685229949653,
+    0.04168723419463883,
+    0.040544351452651124,
+    0.041348856617696585,
+    0.03924569646983097,
+    0.04376605707375954,
+    0.04156180622677008,
+    0.03891254725400359,
+    0.03686507104585568,
+    0.036778986235149205,
+    0.036096144559172295,
+    0.033989230954709154,
+    0.03592595747594411
+  ]
+}

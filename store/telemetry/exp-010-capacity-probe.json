@@ -1,0 +1,12 @@
+{
+  "small": {
+    "params": 182919,
+    "train_acc": 1.0,
+    "val_acc": 0.405
+  },
+  "large": {
+    "params": 765255,
+    "train_acc": 1.0,
+    "val_acc": 0.425
+  }
+}

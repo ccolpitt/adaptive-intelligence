@@ -68,6 +68,12 @@ class LoopConfig:
     # exp-002 finding (self-play data lacks competent threats) at a
     # difficulty the policy can actually learn from (exp-003's lesson).
     diverse_opponents: bool = False
+    # Cold start (exp-012): do NOT warm-start the challenger from the
+    # champion's weights (champion still serves as opponent, gate, and
+    # benchmark incumbent). Needed when the reward scale changes: a
+    # warm-started value function calibrated on the old scale fights the
+    # new signal (exp-011's suspected failure mechanism).
+    cold_start: bool = False
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
 
 
@@ -111,11 +117,12 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
     if incumbent_id is not None:
         champion_module, champion_meta = store.archive.load_policy(incumbent_id)
         champion_id = incumbent_id
-        try:
-            trainer.net.load_state_dict(champion_module.state_dict())
-        except RuntimeError:
-            trainer.net.load_state_dict(champion_module.state_dict(), strict=False)
-        trainer.target.load_state_dict(trainer.net.state_dict())
+        if not cfg.cold_start:
+            try:
+                trainer.net.load_state_dict(champion_module.state_dict())
+            except RuntimeError:
+                trainer.net.load_state_dict(champion_module.state_dict(), strict=False)
+            trainer.target.load_state_dict(trainer.net.state_dict())
         champion_q = _module_q_function(champion_module)
         # Scores are only comparable within one benchmark version. If the
         # incumbent was last scored under a different benchmark, re-measure

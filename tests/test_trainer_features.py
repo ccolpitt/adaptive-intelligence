@@ -79,3 +79,60 @@ def test_terminal_fraction_zero_is_pure_uniform():
         a.add(t)
         b.add(t)
     assert [t[1] for t in a.sample(10)] == [t[1] for t in b.sample(10)]
+
+
+# -- exp-011: tactical shaping -------------------------------------------------
+
+from harness.agents.dqn import shaping_delta  # noqa: E402
+
+
+def test_shaping_missed_win_penalized():
+    assert shaping_delta(my_wins=[3], opp_wins=[], action=0, penalty=0.5) == -0.5
+    assert shaping_delta(my_wins=[3], opp_wins=[], action=3, penalty=0.5) == 0.0
+
+
+def test_shaping_missed_block_penalized():
+    assert shaping_delta(my_wins=[], opp_wins=[5], action=0, penalty=0.5) == -0.5
+    assert shaping_delta(my_wins=[], opp_wins=[5], action=5, penalty=0.5) == 0.0
+
+
+def test_shaping_double_blunder_stacks():
+    # Had a win at 3, opponent threatens 5, played 0: both penalties apply.
+    assert shaping_delta(my_wins=[3], opp_wins=[5], action=0, penalty=0.5) == -1.0
+    # Taking your own win beats blocking: no penalty for winning instead.
+    assert shaping_delta(my_wins=[3], opp_wins=[5], action=3, penalty=0.5) == -0.5
+
+
+def test_shaping_quiet_position_neutral():
+    assert shaping_delta(my_wins=[], opp_wins=[], action=2, penalty=0.5) == 0.0
+
+
+def test_shaping_flows_into_buffer():
+    trainer = make_trainer()
+    trainer.cfg.tactical_shaping = True
+    run_episodes(trainer, n=30)  # eps=1.0 random play blunders constantly
+    rewards = [t[2] for t in trainer.buffer.buffer]
+    shaped = [r for r in rewards if r in (-0.5, 0.5)]  # 0.0/-1.0/+1.0 are unshaped values
+    assert shaped, "random play should produce shaped penalties"
+
+
+def test_conv_layers_param():
+    deep = make_trainer()
+    deep.cfg.conv_layers = 3  # config change after init doesn't rebuild; construct fresh
+    from harness.agents.dqn import DQNTrainer, TrainerConfig
+
+    t3 = DQNTrainer(6, 7, 7, TrainerConfig(seed=0, conv_layers=3, channels=64, hidden=256))
+    n_params_deep = sum(p.numel() for p in t3.net.parameters())
+    t2 = DQNTrainer(6, 7, 7, TrainerConfig(seed=0))
+    n_params_base = sum(p.numel() for p in t2.net.parameters())
+    assert n_params_deep > 2 * n_params_base
+    # Round-trips through TorchScript with the same outputs.
+    import numpy as np
+    import torch
+
+    obs = np.random.default_rng(0).random((2, 6, 7)).astype("float32")
+    scripted = t3.scripted()
+    a = t3.q_function()(obs)
+    with torch.no_grad():
+        b = scripted(torch.from_numpy(obs).unsqueeze(0)).squeeze(0).numpy()
+    assert np.allclose(a, b, atol=1e-6)

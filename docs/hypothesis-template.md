@@ -18,12 +18,23 @@ State, in plain sentences:
 
 ## HYPOTHESIS
 
-One or two sentences naming the ONE change and the belief behind it. The change
+One or two sentences naming the change and the belief behind it. The change
 must be to one of:
 - policy architecture,
 - a training hyperparameter (including training volume),
 - the mode of learning (e.g., self-play vs playing the solver, curriculum),
-- the representation of the board / player / action.
+- the representation of the board / player / action,
+- the reward/feedback signal.
+
+**Specificity rule: every changed variable is named with its from -> to
+values.** "Big swing" or "improved training" mean nothing a year from now.
+Write "episodes 1500 -> 4500, eps_decay 0.999 -> 0.9995, buffer 20000 ->
+50000"; never a nickname. Compound (multi-variable) hypotheses are allowed
+when framed as necessary-conditions packages ("for the policy to improve, BOTH
+a learnable signal AND sufficient capacity must be present") — but the record
+must list every ingredient with from -> to values, and the verdict credits or
+blames the PACKAGE, never an individual ingredient, until single-variable
+follow-ups apportion it.
 
 ## PREDICTION
 

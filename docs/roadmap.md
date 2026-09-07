@@ -11,6 +11,29 @@ out early and cheaply, and the framework's premise fails on the evidence.
 
 ## Method
 
+We create a policy improvement loop.  The loop consists of technical components, and
+the loop process itself. The technical components are a harness, a policy, a set of
+testable hypotheses, results, and a state.md file that tracks progress along the current
+roadmap.  We generate each hypothesis based on knowledge of literature and
+the results from previous test.  Each hypothesis states a change in the policy, training, 
+or harness that we think will yield a better policy.  
+
+We start by building the simplest policy that we know works adaquately.  We then iterate
+by testing the simplest hypotheses we can, learning, and iterating on our hypotheses.  We
+operate a champion-challenger model.  During training, we pit a challenger policy against
+the current challenger.  If it is worse than the champion, we do not consider it for 
+promotion to the new champion.  If we succeed on beating the champion in training, then
+we test the policy under development via a baseline test.  If we can show we improve the
+baseline AND beat the current champion, then we promote, and continue with the policy 
+improvement loop.  One meta part of the loop: we should evaluate whether the loop itself 
+is working.  If we detect no improvement, or policies that are promoted, but are inferior
+to previous iterations of the policy, we need to fix the loop.  We will be on the lookout for
+such cases.
+
+We will always have a roadmap of hypotheses.  The short term goal is to maximize learning
+on the current task.  The long term goal is to demonstrate we can reduce samples necessary 
+to learn, based on previous task mastery.
+
 We close the improvement loop with the simplest components that work, then upgrade one
 component at a time and measure each upgrade against that simple baseline. This order is
 not caution for its own sake. In the connect4-rl precursor, every clever component change

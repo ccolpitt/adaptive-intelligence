@@ -32,17 +32,45 @@ def seed_everything(seed: int) -> None:
     torch.manual_seed(seed)
 
 
+def shaping_delta(my_wins, opp_wins, action: int, penalty: float) -> float:
+    """Tactical shaping (exp-011): penalty for the two decision-critical
+    blunders. ``my_wins``/``opp_wins`` are the columns that would win
+    immediately for the mover / the opponent, computed BEFORE the move.
+
+    - Mover had a winning move and did not take it: -penalty (a foregone
+      win otherwise produces no signal at all).
+    - Opponent has an immediate win and the mover did not block it:
+      -penalty, delivered NOW rather than only via the -1 at game end
+      (and delivered even if the opponent then misses the win).
+    Both can apply to one move. Taking a win already earns the env's +1.
+    """
+    delta = 0.0
+    if my_wins and action not in my_wins:
+        delta -= penalty
+    if opp_wins and action not in opp_wins:
+        delta -= penalty
+    return delta
+
+
 class QNet(nn.Module):
     """Small conv net over (2, R, C) canonical boards -> Q per column."""
 
-    def __init__(self, rows: int, cols: int, n_actions: int, channels: int = 32, hidden: int = 128):
+    def __init__(
+        self,
+        rows: int,
+        cols: int,
+        n_actions: int,
+        channels: int = 32,
+        hidden: int = 128,
+        conv_layers: int = 2,
+    ):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(2, channels, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.01),
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.01),
-        )
+        layers: list = []
+        in_ch = 2
+        for _ in range(conv_layers):
+            layers += [nn.Conv2d(in_ch, channels, kernel_size=3, padding=1), nn.LeakyReLU(0.01)]
+            in_ch = channels
+        self.conv = nn.Sequential(*layers)
         self.fc1 = nn.Linear(channels * rows * cols, hidden)
         self.act = nn.LeakyReLU(0.01)
         self.out = nn.Linear(hidden, n_actions)
@@ -112,6 +140,13 @@ class TrainerConfig:
     store_opponent_transitions: bool = False  # exp-004: off-policy data from both seats
     mirror_augmentation: bool = False  # exp-005: left-right symmetry, 2x data
     terminal_fraction: float = 0.0  # exp-007: terminal quota per batch (precursor used 0.3)
+    conv_layers: int = 2  # exp-010+: network depth
+    # Tactical shaping (exp-011): immediate penalty on the two decision-
+    # critical blunders — skipping your own winning move, and failing to
+    # block the opponent's. Training-signal-only: the task reward, the
+    # benchmark, and all evaluation stay pure win/lose.
+    tactical_shaping: bool = False
+    shaping_penalty: float = 0.5
 
 
 @dataclass
@@ -130,8 +165,8 @@ class DQNTrainer:
         self.cfg = config
         self.rows, self.cols, self.n_actions = rows, cols, n_actions
         seed_everything(config.seed)
-        self.net = QNet(rows, cols, n_actions, config.channels, config.hidden)
-        self.target = QNet(rows, cols, n_actions, config.channels, config.hidden)
+        self.net = QNet(rows, cols, n_actions, config.channels, config.hidden, config.conv_layers)
+        self.target = QNet(rows, cols, n_actions, config.channels, config.hidden, config.conv_layers)
         self.target.load_state_dict(self.net.state_dict())
         self.target.eval()
         self.optimizer = torch.optim.Adam(
@@ -205,6 +240,11 @@ class DQNTrainer:
             legal = env.legal_actions()
             mover = env.current_player
             learner_to_move = (mover == 1) == learner_is_p1
+            will_store = learner_to_move or self.cfg.store_opponent_transitions
+            my_wins = opp_wins = None
+            if self.cfg.tactical_shaping and will_store and hasattr(env, "winning_moves"):
+                my_wins = env.winning_moves(mover)
+                opp_wins = env.winning_moves(-mover)
             if learner_to_move:
                 action = self.select_action(obs, legal)
             elif opponent_act is not None:
@@ -215,9 +255,12 @@ class DQNTrainer:
                 masked[legal] = q[legal]
                 action = int(np.argmax(masked))
             result = env.step(action)
-            if learner_to_move or self.cfg.store_opponent_transitions:
+            if will_store:
+                reward = result.reward
+                if my_wins is not None:
+                    reward += shaping_delta(my_wins, opp_wins, action, self.cfg.shaping_penalty)
                 pending.append(
-                    (obs, action, result.reward, result.next_obs, legal_mask(), result.done)
+                    (obs, action, reward, result.next_obs, legal_mask(), result.done)
                 )
                 movers.append(mover)
             moves += 1
@@ -306,7 +349,10 @@ class DQNTrainer:
     # -- serialization --------------------------------------------------
 
     def scripted(self) -> torch.jit.ScriptModule:
-        cpu_net = QNet(self.rows, self.cols, self.n_actions, self.cfg.channels, self.cfg.hidden)
+        cpu_net = QNet(
+            self.rows, self.cols, self.n_actions,
+            self.cfg.channels, self.cfg.hidden, self.cfg.conv_layers,
+        )
         cpu_net.load_state_dict({k: v.cpu() for k, v in self.net.state_dict().items()})
         cpu_net.eval()
         example = torch.zeros(1, 2, self.rows, self.cols, dtype=torch.float32)
