@@ -1,0 +1,98 @@
+{
+  "experiment_id": "exp-023-budget-vs-depth",
+  "task_ref": "connect4@v2",
+  "policy": "connect4-pol-00082",
+  "comparisons": [
+    {
+      "method": "bare",
+      "states_per_move": 1,
+      "ladder": 0.11607142857142859,
+      "max_depth": 0,
+      "seconds": 7.7,
+      "per_rung": {
+        "1": 0.5179,
+        "2": 0.0893,
+        "3": 0.0179,
+        "4": 0.0357,
+        "5": 0.0,
+        "6": 0.0357
+      }
+    },
+    {
+      "method": "depth-2",
+      "states_per_move": 478,
+      "ladder": 0.1875,
+      "max_depth": 2,
+      "seconds": 19.0,
+      "per_rung": {
+        "1": 0.3393,
+        "2": 0.1429,
+        "3": 0.1071,
+        "4": 0.2321,
+        "5": 0.125,
+        "6": 0.1786
+      }
+    },
+    {
+      "method": "depth-3",
+      "states_per_move": 3216,
+      "ladder": 0.2708333333333333,
+      "max_depth": 3,
+      "seconds": 82.0,
+      "per_rung": {
+        "1": 0.5,
+        "2": 0.3036,
+        "3": 0.3214,
+        "4": 0.1786,
+        "5": 0.1786,
+        "6": 0.1429
+      }
+    },
+    {
+      "method": "budget-50",
+      "states_per_move": 50,
+      "ladder": 0.22023809523809523,
+      "max_depth": 11,
+      "seconds": 24.2,
+      "per_rung": {
+        "1": 0.5536,
+        "2": 0.1786,
+        "3": 0.1964,
+        "4": 0.1964,
+        "5": 0.0714,
+        "6": 0.125
+      }
+    },
+    {
+      "method": "budget-200",
+      "states_per_move": 200,
+      "ladder": 0.24404761904761907,
+      "max_depth": 16,
+      "seconds": 70.8,
+      "per_rung": {
+        "1": 0.3929,
+        "2": 0.1964,
+        "3": 0.3214,
+        "4": 0.1429,
+        "5": 0.25,
+        "6": 0.1607
+      }
+    },
+    {
+      "method": "budget-400",
+      "states_per_move": 400,
+      "ladder": 0.33928571428571425,
+      "max_depth": 16,
+      "seconds": 130.0,
+      "per_rung": {
+        "1": 0.7143,
+        "2": 0.3214,
+        "3": 0.2679,
+        "4": 0.2679,
+        "5": 0.2679,
+        "6": 0.1964
+      }
+    }
+  ],
+  "iterations": []
+}
