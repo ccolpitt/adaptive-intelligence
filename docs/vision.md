@@ -311,6 +311,23 @@ last. If the system demonstrates compounding transfer — and we can verify it w
 sample-efficiency curves (Component 0) — we are on the path. If it does not, the
 framework's premise fails and we will know early and cheaply.
 
+**The mechanism hypothesis (2026-09-19, human-directed):** transfer is not merely
+*enabled* by a world model — generalization is *facilitated by learning skills and a
+world model in parallel*. From the very beginning, the policy's job is twofold: learn
+to act well in the environment AND learn the environment's "physics" — its dynamics —
+at the same time, from the same experience. The prediction target starts simple and
+deepens: first predict the next state given an action; then predict multi-step
+trajectories (a human throwing a ball does not predict one frame ahead — they predict
+the whole arc, and what happens after impact); eventually predict the consequences of
+consequences. The falsifiable claim: a policy trained with a parallel dynamics-
+prediction objective reaches mastery in fewer samples than a policy trained on reward
+alone, AND its learned dynamics representation transfers to the next task better than
+its policy head does. This sharpens working hypotheses (a) and (h) from "world models
+help" to "world-model learning must be concurrent with skill learning, not a separate
+phase" — and it gives the acting-without-reward problem an answer: in the long stretches
+of a game where no reward arrives, the dynamics-prediction error is still a training
+signal on every single move. Nothing is ever a wasted sample if it teaches physics.
+
 This is also where the model-based question enters honestly. The original essay claimed
 model-free RL "only works for simple games" — that is wrong (model-free methods reached
 grandmaster-level StarCraft II and champion-level Dota 2: Vinyals et al., 2019; Berner

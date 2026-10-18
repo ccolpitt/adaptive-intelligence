@@ -6,8 +6,12 @@ Build a system that closes an automated improvement loop over learning policies:
 train, evaluate against fixed benchmarks, select, archive, repeat — then upgrade the
 loop's components one at a time (curriculum, plasticity, architecture) to test the
 central hypothesis: **a single network that masters multiple related tasks becomes
-increasingly sample-efficient at learning the next one.** Full framework:
-`docs/vision.md`. Current position and next task: `STATE.md`.
+increasingly sample-efficient at learning the next one** — and its primary mechanism
+hypothesis: **generalization is facilitated by learning skills and a world model in
+parallel** — the policy learns the environment's dynamics (next state, then whole
+trajectories, then consequences of consequences) from the same experience that
+teaches it to act, so every move is a training sample even when no reward arrives.
+Full framework: `docs/vision.md` §3. Current position and next task: `STATE.md`.
 
 ## Non-Negotiable Principles
 

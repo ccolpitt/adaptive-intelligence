@@ -1,12 +1,12 @@
 # Hypothesis Template
 
-Every experiment's hypothesis is written for a human reader — someone (probably
-future-you) who will read it cold, years later, deciding whether to revisit it.
+Every experiment's hypothesis is written for a human reader, deciding whether to revisit it.
 No jargon soup. Follow this structure:
 
 ## CONTEXT (the pre-sentence that sets the stage)
 
 State, in plain sentences:
+- What are we trying to learn?  What's the task?
 - The mode of learning (e.g., self-play against a frozen champion) and training
   volume (episodes).
 - How the board and player are represented (currently: AlphaZero-style two
@@ -17,19 +17,19 @@ State, in plain sentences:
 - Where the current champion stands on the yardstick.
 
 ## HYPOTHESIS
-
-One or two sentences naming the change and the belief behind it. The change
-must be to one of:
+Every hypothesis has to be structured as follows, "If we make X change, then we will observe Y because of Z".  We don't even need to make hypotheses to improve the policy every time.  We could make hypotheses about the learning process itself, to help improve the policy down the line.
+The change (X) could be:
 - policy architecture,
 - a training hyperparameter (including training volume),
 - the mode of learning (e.g., self-play vs playing the solver, curriculum),
 - the representation of the board / player / action,
 - the reward/feedback signal.
+- Something else
 
 **Specificity rule: every changed variable is named with its from -> to
 values.** "Big swing" or "improved training" mean nothing a year from now.
-Write "episodes 1500 -> 4500, eps_decay 0.999 -> 0.9995, buffer 20000 ->
-50000"; never a nickname. Compound (multi-variable) hypotheses are allowed
+For example, we could say "Increase training episodes from 1500 to 4500, eps_decay 0.999 -> 0.9995, or training buffer size from 20000 ->
+50000".  Do not use any nicknames or jargon in the hypothesis. Compound (multi-variable) hypotheses are allowed
 when framed as necessary-conditions packages ("for the policy to improve, BOTH
 a learnable signal AND sufficient capacity must be present") — but the record
 must list every ingredient with from -> to values, and the verdict credits or
@@ -37,9 +37,9 @@ blames the PACKAGE, never an individual ingredient, until single-variable
 follow-ups apportion it.
 
 ## PREDICTION
-
-"If true, we expect to measure at least Y, because Z." Y is a number on a named
-benchmark; Z is the mechanism.
+Every hypothesis makes a prediction, and posits a reason that supports the observation.
+"If we change X, we expect to measure Y, because Z." Y is a number on a named
+benchmark, or something otherwise verifiable.  Z is the causal mechanism.  We are trying to establish causal relationships between X and Y.
 
 ## DECISION CRITERIA
 

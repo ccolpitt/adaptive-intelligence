@@ -120,6 +120,26 @@ Append-only (formalize connect4-rl's `experiments.json`). Each record:
       experiment. This feeds Phase 4 (plasticity) and the diagnosis-driven
       architecture tenets (vision.md, Component 1). Diagnostics must be able to
       DISAMBIGUATE causes, not just detect symptoms.
+- [ ] **Policy performance cards** (`python -m harness card --policy <id>`): win/loss
+      is one number; a hypothesis needs to know WHY. A card probes an archived
+      policy post-hoc and reads its experiment telemetry, bundling the connect4-rl
+      dashboard diagnostics — value calibration (Q within the ±1 reward world),
+      terminal calibration (Q of game-winning moves → +1), tactical accuracy
+      (take-the-win / block-the-loss rates, Q of not-blocking → −1), value
+      propagation (Q-decay by moves-from-end), exploration coverage (unique
+      states), network health (dead / exploding / non-finite weights), loss and
+      dormant-neuron trends. Every reading carries an expectation and an
+      ok/warn/fail status; generic core for any task, family probes activate via
+      capability detection (`winning_moves` ⇒ Connect-N tactics), bespoke probes
+      register per task_id. Cards are derived artifacts under `store/cards/` —
+      JSON first (for machines), rendered text second (for humans).
+- [ ] **The diagnostic ladder (who reads the cards):** today the human reads cards
+      to form the next hypothesis; next an agent reads them and proposes; the end
+      state is the POLICY generating, analyzing, and acting on its own cards —
+      choosing what to fix and what to try next. Self-diagnosis is part of the
+      intelligence, not tooling around it (same absorption pattern as the
+      scheduler, Phase 3b note; converges with Phase 5's diagnosis→proposal loop
+      and Phase 6's self-directed goals).
 - [ ] Mastery narrative ("explain how we did it"): a `report` command that, given
       a policy ID, walks its lineage and the linked experiments to emit the story —
       each ancestor's hypothesis, verdict, and tldr in order. What worked, what
@@ -306,6 +326,57 @@ Growing the trunk itself when the portfolio outgrows it is working hypothesis (f
       per eval like any benchmark score. Hypothesis: world-model accuracy *leads*
       play strength and predicts transfer better than play strength does — because
       knowing how the world works is the part that generalizes across tasks.
+### Registered-experiment candidates (human-proposed, 2026-09-19)
+
+- [ ] **Parallel world-model head (the mechanism hypothesis, vision §3).** Add a
+      second output head that predicts the next board state given the action;
+      train it jointly with the Q head on the same batches. Arms: reward-only
+      (baseline) vs reward+prediction. Score BOTH play strength and held-out
+      next-state prediction error. Extension ladder: 1-step prediction →
+      k-step rollout prediction → trajectory-with-consequences. Prediction:
+      the joint objective reaches a given ladder score in fewer episodes, and
+      survives seed variance (multi-seed mandatory post exp-016/017).
+- [ ] **Seed-variance management.** Two sub-levers: (i) early-abort — if the
+      benchmark hasn't cleared a floor by iteration k, kill the run and re-seed
+      (cheap given plateau-stop already exists); (ii) multi-seed as standing
+      protocol — no single-seed verdict where the claimed effect is smaller
+      than the observed seed spread (exp-012 vs exp-016: 0.116 vs 0.054, same
+      recipe).
+- [ ] **Positive-signal replay filter.** Train only (or preferentially) on
+      transitions that led to wins (+1) and successful blocks. CAUTION,
+      recorded so the experiment confronts it: Q-learning needs contrast — a
+      value function that never sees bad outcomes has no gradient pushing any
+      Q down, and zero-reward transitions are NOT signal-free (their Bellman
+      targets carry bootstrapped future value backward). Prior art to cite:
+      self-imitation learning (Oh et al. 2018). Framed correctly this is a
+      replay-*bias* experiment (a sibling of tactical_fraction), not a
+      replay-*filter*.
+- [ ] **Archive-league opponents (de-scaffold the diversity lever).** Principle
+      (human, 2026-09-19): hand-crafted opponents cannot exist in a
+      self-sustaining system — in future domains nobody knows a-priori what a
+      good answer looks like. The current diverse-opponents rotation includes a
+      scripted take-the-win/block fixture and a random player: scaffolding.
+      The domain-general replacement for opponent diversity is the ARCHIVE —
+      sample past champions and archived challengers as sparring partners
+      (AlphaStar's league). Experiment: recipe with rotation = current champion
+      + sampled archive policies (+ pure noise, which encodes no domain
+      knowledge), vs the scripted rotation. Also isolates what exp-006/015
+      never measured: the scripted fixture's individual contribution.
+      HONEST SCOPE NOTE: tactical shaping and the fixture BOTH consume the
+      same oracle (`winning_moves`). The same principle eventually retires
+      shaping too — its domain-general successor is the world-model head
+      (mechanism hypothesis, vision §3): a model that predicts "this move ends
+      the game" can generate its own tactical signal in any domain. Scaffolds
+      are allowed NOW precisely because the ladder benchmark lets us measure
+      what replaces them.
+- [ ] **Third conv layer (receptive field 5x5 → 7x7).** Rationale: a 7-wide
+      window sees a full 4-window plus one cell on each side — enough to
+      locally detect open-ended threats (_XXXX_) that the current 5x5 field
+      cannot. Nuance from exp-010: a 3-conv net showed NO advantage at
+      supervised solver-label fitting, so the claim must be that depth helps
+      the RL loop's optimization/generalization, not representational capacity.
+      `TrainerConfig.conv_layers=3` already exists; one-line experiment.
+
 - [ ] **Imagination as experience multiplier (hypothesis h, Dreamer-style).** Train
       the policy on world-model rollouts ("dreams") between real episodes; measure
       the exchange rate — how many imagined episodes substitute for one real

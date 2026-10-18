@@ -77,6 +77,153 @@ is next
   the self-generated-benchmark tension: self-generated *targets* are the goal,
   self-referential *grading* is the trap.
 
+- **exp-022 REFUTED (all 9 runs):** baseline 0.064 / search-moves 0.059 /
+  search-targets 0.053. Arm B cards: horizon 33-37 plies (distillation
+  propagated value) BUT |Q| inflated (max 2.8) and take-the-win collapsed to
+  0.27 — bootstrapping through inflated leaf values destroys move ordering.
+  Proposed next: bounded distillation (clip targets to [-1,1]).
+  **CHAMPION RATCHET:** gate v2 promoted pol-00246 at ladder 0.042
+  (0.083→0.071→0.042). Human decision pending: reset champion to ladder-best.
+- **ADR-006 ACCEPTED + ADR-007 ACCEPTED (human rules):** eval = naked network,
+  no search (training unrestricted). Gate v3 "strict" is default: promote
+  only on h2h win AND ladder improvement; parity flagged as signal. New
+  `harness/diagnosis.py`: after every run the best challenger's card is read
+  and failing instruments map to concrete levers (telemetry `diagnosis`, CLI
+  `diagnose`). 150 tests green. exp-022 runs under gate v2 (recorded).
+- **HARNESS DEFECT FIXED — plateau detector had no warm-up.** Cold-start
+  curves are flat ~8 iterations then break out (exp-012 flat through iter 7,
+  0.116 at iter 11); patience-6 stops truncated exp-014/015/016/019 and
+  exp-021-seed24 (those scores are lower bounds). Fix: `plateau_min_iterations
+  =12`, `plateau_patience=8`; regression test added. exp-021 aborted
+  (verdicts recorded as inconclusive/invalidated); **exp-022 running** = same
+  design + Arm 0 baseline re-measured under the corrected detector (9 runs).
+- **ADR-006 PROPOSED (human leaning yes): search in training, bare at
+  evaluation.** Policy = the network; `train_search_depth` / `search_targets`
+  are training levers (built + tested, default off); benchmark unchanged.
+  **exp-021 running**: Arm A (search picks moves, seeds 24-26) then Arm B
+  (search-backed distillation targets, seeds 27-29). Standing rule 5: fixed
+  training budget. 142 tests green.
+- **exp-020 SUPPORTED — PROGRAM RECORD (lookahead at inference, no training):**
+  `harness/lookahead.py` (`LookaheadQ`: k-ply negamax over real rules, leaves
+  valued by the net; drop-in QFunction). Unchanged champion pol-00148: bare
+  0.071 → depth-1 0.089 → depth-2 0.217 → depth-3 **0.310** (rung-1 0.29→0.68).
+  Reflex-only inference was the binding constraint. Frontier still depth 1.
+  NEXT (queue #1/#2): search during training (AlphaZero-lite) + decide via ADR
+  whether promotion/benchmark are evaluated with search.
+- **exp-019 REFUTED (MC targets, seeds 21/22/23):** mean 0.038 vs 0.077;
+  value horizon lengthened 0→4 plies (mechanism worked) but take-the-win
+  0.91→0.44 / block 0.89→0.48 — high-variance blame destroyed tactics.
+- **`docs/hypothesis-queue.md` created** — the human-editable forward plan
+  (running/queued/done, standing rules, priority order). Read it before
+  launching anything new. **`python -m harness status`** added: running
+  processes, archive heartbeat, champion, pending verdicts.
+- **exp-018 REFUTED** (conv3 joint over seeds 18/19/20: mean 0.070 vs baseline
+  0.077). SIDE EVENT: first gate-v2 promotion — champion is now
+  **connect4-pol-00148** (gen 13, bench 0.071, relative path: h2h 0.56 CI
+  0.507-0.621; bench 0.071 vs 0.083 not a significant regression). Monitor the
+  not-significant-regression ratchet across future promotions.
+- **`mc_targets` lever built + tested** (human-proposed Monte-Carlo credit
+  labeling: reward_i = outcome * gamma^(plies_from_end), done=True, subsumes
+  loser rewrite; default off). **exp-019 running** (seeds 21/22/23): prediction
+  mean >= 0.14 or 2/3 > 0.116, mechanistic check = value_horizon_plies >> 0.
+- **Solver calibration verified on champion**: Q at solver-proven wins +0.66
+  (ok), proven losses -0.67 (ok) — sign AND magnitude both correct; reward IS
+  reaching endgame values; the deficit is propagation depth (horizon ~ 0).
+- **Mechanism hypothesis adopted (human-directed):** vision §3 + core.md now
+  state the primary mechanism claim — generalization is facilitated by learning
+  skills and a world model IN PARALLEL (next-state → trajectories → consequences
+  of consequences); every move is a training sample even without reward. Four
+  new roadmap candidates registered (2026-09-19): parallel world-model head,
+  seed-variance management, positive-signal replay filter (with the contrast
+  caution), third conv layer, archive-league opponents (de-scaffolding
+  principle: scripted fixture AND shaping both consume the winning_moves
+  oracle; successors = archive league + world-model-derived signal).
+- **Q instrumentation extended:** per-episode mean |Q| in telemetry
+  (`episodes.q_mean_abs`) + card reading vs the [0,1] band + dashboard panel;
+  NEW solver-calibration card section — Q at solver-PROVEN wins (→ +1) and
+  proven losses (→ −1), harvested from live positions, ground-truth check that
+  reward back-propagates. 130 tests green.
+- **exp-017 SUPPORTED: recipe 3-seed distribution 0.054/0.060/0.116** (mean
+  0.077, spread 0.062) — exp-012 was the lucky draw; typical recipe (~0.06)
+  does NOT beat the champion (0.083). STANDING RULE: >= 3 seeds for any effect
+  smaller than the spread. **exp-018 launched** (conv_layers 2→3, seeds
+  18/19/20, sequential; prediction scored on the 3-seed distribution).
+- **exp-016 REFUTED — REPRODUCTION FAILURE, headline finding:** the identical
+  recipe scored 0.116 at seed 12 but only 0.054 at seed 16 (plateau-stopped
+  iter 7/30). Seed variance is comparable to the effects we measure; exp-012's
+  0.116 may be substantially luck. **exp-017 launched** (pure replication,
+  seed 17, nothing else changed) to get a third seed → mean ± spread. New
+  standing rule proposed in exp-017's hypothesis: single-seed deltas below the
+  observed seed spread are noise.
+- **2x2 decomposition COMPLETE — exp-015 REFUTED** (plateau-stopped iter 6/15):
+  diverse-only 0.018 ≈ the 0.015 floor. Cells: pair 0.015 / +both-players 0.060 /
+  +diverse 0.018 / full package 0.116 → the data levers are SUPERADDITIVE
+  (diversity manufactures tactical lessons; both-players data records them);
+  the exp-012 package is the minimal known recipe. **exp-016 launched**
+  (recipe ceiling probe: recipe unchanged, 30 iters, plateau-stop decides the
+  endpoint, gate v2 active — first run where a recipe policy can promote).
+  Registered fork: >= 0.15 → recipe still scaling; plateau at ~0.116 → signal-
+  saturated, next bottleneck is reflex-only inference → search (ADR-003).
+- **Campaign story ledger** (`python -m harness story` → `store/cards/
+  experiments/story.md`): auto-generated levers/expected/observed markdown from
+  the registry, one block per experiment.
+- **exp-014 INCONCLUSIVE** (plateau-stop fired live, saved 7/15 iterations):
+  shaping+cold_start+both-players hit 0.060 — 4x exp-013's 0.015, half the
+  package's 0.116; both-players is a large contributor, not the whole recipe.
+  **exp-015 launched** (shaping+cold_start+diverse-opponents, seed 15):
+  completes the 2x2 over the two data levers.
+- **ADR-005: promotion gate v2** (human-directed): `statistical_either_gate` —
+  promote on EITHER proven h2h superiority (old path) OR proven benchmark
+  superiority with h2h not significantly below parity. Default for new runs
+  (`gate_rule="either"`); old double gate kept as `"double"`. Note: exp-012
+  iter-11 still fails v2 (h2h 0.41 UB≈0.47 = proven regression, and +0.033
+  bench not significant at n=168).
+- **Plateau detection** (human request — "how do we know we scaled enough?"):
+  `stats.plateaued` + LoopConfig `plateau_patience`/`plateau_min_delta`/
+  `plateau_action` (flag|stop|off, default flag). Stop mode ends the run and
+  records `plateau_stop` + iterations saved in telemetry.
+- **Tactical replay bias lever** (human proposal): `TrainerConfig.
+  tactical_fraction` — guaranteed batch quota of decision-critical transitions
+  (win-available or must-block positions, one ply before terminals). Default
+  0.0; flip inside a registered experiment. Flags are computed independently of
+  reward shaping.
+- **exp-013 REFUTED**: shaping+cold_start alone stalled at ladder 0.015 in 4500
+  episodes (package hit 0.116) — data levers are jointly necessary.
+  **exp-014 launched** (shaping+cold_start+both-players data, seed 14, gate v2,
+  plateau-stop armed): tests whether both-players data completes the recipe.
+- **Per-episode telemetry + matplotlib dashboards** (human request): the loop now
+  records a flat `episodes` block per experiment — loss, grad norm, learner
+  result (+1/0/-1, a free rolling win-rate signal), cumulative unique states
+  (tracked in `DQNTrainer.unique_states_seen`), epsilon — one entry per episode.
+  `python -m harness exp-card --plots` renders a 3×3 PNG dashboard
+  (connect4-rl style) from stored telemetry; matplotlib==3.10.7 pinned as an
+  optional dep. Old telemetry lacks the episodes block — dashboards render
+  "no data" panels for those. PNGs for all 12 experiments generated.
+- **Gradient norms now tracked** (human request): `_train_step` returns
+  (loss, pre-clip L2 grad norm) — free from `clip_grad_norm_`; per-episode means
+  in `EpisodeStats.grad_norms`, per-iteration series in telemetry as
+  `episode_grad_norm_means`, trend reading on the policy performance card
+  (steady/declining = ok; explosion = instability; collapse + rising dead
+  weights = plasticity loss). Old telemetry files simply lack the series — cards
+  tolerate that.
+- **Experiment cards implemented** (`experiment_card.py`, CLI
+  `python -m harness exp-card --experiment-id <id>` or `--all`): joins registry
+  (if-X-then-Y hypothesis, one change, frozen conditions, prior art, verdict) +
+  telemetry (benchmark/h2h/loss/grad-norm/dormant curves as inline-SVG charts,
+  promotions marked) + archive (inputs/outputs). Self-contained HTML per
+  experiment + index.html under `store/cards/experiments/` — no matplotlib, no
+  PNGs. All 12 existing experiments render; 8 new tests.
+- **Policy performance cards implemented** (`performance_card.py`, CLI
+  `python -m harness card --policy <id>`): post-hoc diagnostic probe + telemetry
+  read producing ok/warn/fail readings per section — value calibration, terminal
+  calibration, Connect-N tactical accuracy (auto-detected via `winning_moves`),
+  Q-decay/value propagation, exploration, network health, loss/dormant trends.
+  Cards saved to `store/cards/*.{json,txt}`; 11 new tests (all green). First real
+  card on champion connect4-pol-00065 immediately surfaced: take-the-win 0.93,
+  block-the-loss 0.90, and a RISING loss trend in exp-009 — promoted on h2h alone.
+  Roadmap now records the diagnostic ladder (human reads cards → agent reads →
+  policy self-diagnoses).
+
 ## Remaining Phase 0 odds and ends
 
 - Diagnostic telemetry is partial: loss curves, epsilon, dormant-neuron fractions
