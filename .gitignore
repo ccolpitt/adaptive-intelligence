@@ -9,3 +9,18 @@ venv/
 build/
 dist/
 *.egg-info/
+
+# --- Store policy: data in git, binaries and derived renders on disk only ---
+# Archived policy weights: 244MB+ of TorchScript binaries and growing. The
+# AUDITABLE record (index.jsonl, events.jsonl) IS committed, so every
+# promotion, epitaph, and eval score stays in history. The weights themselves
+# are local artifacts. Nothing is deleted (core.md principle 4) — they are
+# simply not version-controlled. If off-machine durability is wanted, that is
+# a separate decision (git-lfs or object storage).
+store/archive/*.pt
+
+# Derived renders. Learning rule: store the DATA (json), regenerate the
+# picture with a versioned renderer on demand. Never commit a chart.
+store/cards/**/*.png
+store/cards/**/*.html
+store/cards/*.png

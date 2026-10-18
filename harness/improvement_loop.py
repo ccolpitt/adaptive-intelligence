@@ -26,7 +26,8 @@ from .interfaces import QFunction, Task
 from .experiment_registry import ExperimentRegistry
 from .stats import Z_95
 from .task_registry import TaskRegistry
-from .promotion_gate import statistical_double_gate
+from .promotion_gate import GATE_RULES
+from .stats import plateaued
 
 
 class Store:
@@ -74,6 +75,31 @@ class LoopConfig:
     # warm-started value function calibrated on the old scale fights the
     # new signal (exp-011's suspected failure mechanism).
     cold_start: bool = False
+    # Promotion rule — see promotion_gate.GATE_RULES. "strict" (ADR-007,
+    # 2026-10-03, human-directed): promote only if the challenger beats the
+    # champion head-to-head AND improves on the absolute benchmark; parity
+    # rejections are flagged for the hypothesis generator. "either" (ADR-005)
+    # and "double" (original) are kept for reproducing earlier campaigns.
+    gate_rule: str = "strict"
+    # After the run, generate a performance card for the best challenger and
+    # a rule-based diagnosis (ADR-007: the hypothesis generator reads the
+    # card). Costs ~1-2 min of probing per run.
+    auto_card: bool = True
+    auto_card_games: int = 60
+    # Plateau detection: flag (or stop) when the challenger benchmark's best
+    # score has not improved by more than plateau_min_delta in the last
+    # plateau_patience iterations. Answers "would more episodes help?" from
+    # the curve itself. plateau_action: "flag" | "stop" | "off".
+    # CALIBRATION (2026-10-03, harness defect fixed): cold-start runs sit flat
+    # for ~8 iterations before breaking out (exp-012: flat through iter 7,
+    # 0.116 at iter 11). The original patience=6 with no warm-up would have
+    # killed that record run at iter 6 — and DID truncate exp-014/015/016/019
+    # and exp-021-seed24. Defaults now: no plateau checks before
+    # plateau_min_iterations, and patience 8.
+    plateau_patience: int = 8
+    plateau_min_delta: float = 0.02
+    plateau_min_iterations: int = 12
+    plateau_action: str = "flag"
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
 
 
@@ -190,6 +216,19 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
         "task_ref": task.ref,
         "iterations": [],
         "episode_loss_means": [],
+        "episode_grad_norm_means": [],
+        # Per-episode series (flat across all iterations) — the fine-grained
+        # curves the connect4-rl dashboard proved diagnostic: loss/episode,
+        # grad-norm/episode, training result/episode (learner's +1/0/-1, a
+        # free rolling win-rate signal), cumulative unique states, epsilon.
+        "episodes": {
+            "loss": [],
+            "grad_norm": [],
+            "q_mean_abs": [],
+            "result": [],
+            "unique_states": [],
+            "epsilon": [],
+        },
     }
     promotions = 0
 
@@ -205,6 +244,7 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
     for iteration in range(cfg.iterations):
         # -- train --------------------------------------------------------
         losses: List[float] = []
+        grad_norms: List[float] = []
         solver_opp, frontier_depth = (
             frontier_opponent_act() if cfg.frontier_opponent_fraction > 0 else (None, None)
         )
@@ -225,7 +265,23 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
                 stats = trainer.play_episode(env, opponent_q=champion_q)
             if stats.losses:
                 losses.append(float(np.mean(stats.losses)))
+            if stats.grad_norms:
+                grad_norms.append(float(np.mean(stats.grad_norms)))
+            eps_t = telemetry["episodes"]
+            eps_t["loss"].append(float(np.mean(stats.losses)) if stats.losses else None)
+            eps_t["grad_norm"].append(
+                float(np.mean(stats.grad_norms)) if stats.grad_norms else None
+            )
+            eps_t["q_mean_abs"].append(
+                float(np.mean(stats.q_abs_means)) if stats.q_abs_means else None
+            )
+            eps_t["result"].append(stats.learner_result)
+            eps_t["unique_states"].append(len(trainer.unique_states_seen))
+            eps_t["epsilon"].append(round(trainer.eps, 5))
         telemetry["episode_loss_means"].append(float(np.mean(losses)) if losses else None)
+        telemetry["episode_grad_norm_means"].append(
+            float(np.mean(grad_norms)) if grad_norms else None
+        )
 
         # -- evaluate -------------------------------------------------------
         challenger_id = store.archive.next_policy_id(task.task_id)
@@ -240,7 +296,8 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
         bench = task.benchmark.score(trainer.q_function())
 
         # -- select ---------------------------------------------------------
-        decision = statistical_double_gate(
+        gate_fn = GATE_RULES[cfg.gate_rule]
+        decision = gate_fn(
             challenger_h2h_score=h2h.score,
             h2h_games=h2h.games,
             challenger_benchmark=bench.score,
@@ -305,6 +362,7 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
                 "benchmark_detail": bench.detail,
                 "champion_benchmark": champion_bench,
                 "promoted": decision.promote,
+                "parity": decision.parity,
                 "reason": decision.reason,
                 "epsilon": trainer.eps,
                 "frontier_training_depth": frontier_depth,
@@ -319,11 +377,59 @@ def run_loop(task: Task, store: Store, cfg: LoopConfig) -> Dict:
             f"bench={bench.score:.3f}{frontier_txt} promoted={decision.promote} | "
             f"{task.ref}: {flag}"
         )
+
+        # -- plateau detection: is more training still buying anything? ------
+        bench_history = [it["benchmark_score"] for it in telemetry["iterations"]]
+        warmed_up = len(bench_history) >= cfg.plateau_min_iterations
+        if cfg.plateau_action != "off" and warmed_up and plateaued(
+            bench_history, cfg.plateau_patience, cfg.plateau_min_delta
+        ):
+            telemetry["iterations"][-1]["plateau"] = True
+            note = (
+                f"benchmark best has not improved by > {cfg.plateau_min_delta} in the "
+                f"last {cfg.plateau_patience} iterations "
+                f"(best {max(bench_history):.3f}); more episodes are not helping"
+            )
+            print(f"[{cfg.experiment_id}] PLATEAU: {note}")
+            if cfg.plateau_action == "stop":
+                telemetry["plateau_stop"] = {
+                    "iteration": iteration,
+                    "note": note,
+                    "iterations_saved": cfg.iterations - iteration - 1,
+                }
+                print(
+                    f"[{cfg.experiment_id}] stopping early at iter {iteration} "
+                    f"(saving {cfg.iterations - iteration - 1} iterations of compute)"
+                )
+                break
         if mastered:
             print(
                 f"[{cfg.experiment_id}] CURRICULUM SIGNAL: {task.ref} benchmark "
                 f">= {task.mastery_threshold} — consider adding harder tasks (roadmap Phase 3)."
             )
+
+    # -- diagnose (ADR-007): read the best challenger's card, emit hypotheses --
+    if cfg.auto_card and telemetry["iterations"]:
+        try:
+            from .diagnosis import diagnose_run, render_diagnosis
+            from .performance_card import build_card, save_card
+
+            best = max(telemetry["iterations"], key=lambda it: it["benchmark_score"])
+            card = build_card(store, best["challenger"], task=task, games=cfg.auto_card_games,
+                              seed=cfg.seed)
+            save_card(store, card)
+            suggestions = diagnose_run(card, telemetry)
+            telemetry["diagnosis"] = {
+                "policy": best["challenger"],
+                "card_worst_status": card.worst_status(),
+                "suggestions": [s.to_dict() for s in suggestions],
+            }
+            print(f"[{cfg.experiment_id}] card for best challenger {best['challenger']} "
+                  f"(worst status {card.worst_status()})")
+            print(render_diagnosis(suggestions))
+        except Exception as err:  # diagnostics must never kill a run
+            telemetry["diagnosis"] = {"error": repr(err)}
+            print(f"[{cfg.experiment_id}] diagnosis skipped: {err!r}")
 
     telemetry_path = store.telemetry_dir / f"{cfg.experiment_id}.json"
     telemetry_path.write_text(json.dumps(telemetry, indent=2))

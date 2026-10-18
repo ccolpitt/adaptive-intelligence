@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .stats import Z_95, significantly_worse, wilson_lower
+from .stats import Z_95, significantly_better, significantly_worse, wilson_lower, wilson_upper
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,12 @@ class GateDecision:
     relative_pass: bool
     absolute_pass: bool
     reason: str
+    # Signals for the hypothesis generator (ADR-007): a non-promotion at
+    # PARITY (h2h CI straddles 0.5 and benchmark not below the champion's)
+    # means the lever that produced it is probably sound — scale it rather
+    # than abandon it.
+    parity: bool = False
+    bench_gain_significant: bool = False
 
 
 def double_gate(
@@ -123,3 +129,143 @@ def statistical_double_gate(
         absolute_pass=absolute,
         reason=reason,
     )
+
+
+def statistical_either_gate(
+    challenger_h2h_score: float,
+    h2h_games: int,
+    challenger_benchmark: float,
+    challenger_benchmark_games: int,
+    champion_benchmark: float,
+    champion_benchmark_games: int,
+    z_promote: float = Z_95,
+    z_regress: float = Z_95,
+) -> GateDecision:
+    """Gate v2 (ADR-005, human-directed): promote on EITHER strength proof,
+    provided the other axis shows no significant regression.
+
+    Path A (relative): significantly beats the champion head-to-head
+    (Wilson LB > 0.5) AND no significant benchmark regression.
+    Path B (absolute): significantly better on the fixed benchmark
+    (one-sided two-proportion test) AND no significant head-to-head
+    regression (Wilson UPPER bound must not fall below 0.5 — true parity
+    passes, a proven losing matchup does not).
+
+    Rationale: the double gate let the relative match VETO absolute
+    progress (exp-012 iter 11: challenger benchmark 0.116 > champion 0.083,
+    blocked on h2h 0.41 — the reverse of the v32 failure). Principle 1 says
+    the absolute yardstick is the ground truth; head-to-head demotes from
+    co-equal gate to regression guard on Path B. Note iter-11 itself would
+    STILL fail this gate: its h2h upper bound (~0.47) is significantly
+    below parity, so it regressed, not merely differed.
+    """
+    lb = wilson_lower(challenger_h2h_score, h2h_games, z_promote)
+    ub = wilson_upper(challenger_h2h_score, h2h_games, z_promote)
+    h2h_superior = lb > 0.5
+    h2h_regressed = ub < 0.5
+    bench_superior = significantly_better(
+        challenger_benchmark, challenger_benchmark_games,
+        champion_benchmark, champion_benchmark_games, z_promote,
+    )
+    bench_regressed = significantly_worse(
+        challenger_benchmark, challenger_benchmark_games,
+        champion_benchmark, champion_benchmark_games, z_regress,
+    )
+    path_a = h2h_superior and not bench_regressed
+    path_b = bench_superior and not h2h_regressed
+
+    h2h_txt = (f"h2h {challenger_h2h_score:.2f} over {h2h_games} games "
+               f"(95% CI {lb:.3f}-{ub:.3f})")
+    bench_txt = (f"bench {challenger_benchmark:.3f} vs champion "
+                 f"{champion_benchmark:.3f}")
+    if path_a and path_b:
+        reason = f"promoted (both paths): {h2h_txt} beats champion AND {bench_txt} superior"
+    elif path_a:
+        reason = f"promoted (relative path): {h2h_txt} > 0.5, no significant benchmark regression ({bench_txt})"
+    elif path_b:
+        reason = (f"promoted (absolute path): {bench_txt} significantly superior, "
+                  f"h2h at parity or better ({h2h_txt})")
+    elif h2h_superior and bench_regressed:
+        reason = (f"rejected: {h2h_txt} beats champion BUT SIGNIFICANT benchmark "
+                  f"regression ({bench_txt}) — the v32 trap, caught")
+    elif bench_superior and h2h_regressed:
+        reason = (f"rejected: {bench_txt} superior BUT significant h2h regression "
+                  f"({h2h_txt}, UB < 0.5) — stronger on the yardstick, proven "
+                  f"weaker against the incumbent; needs both")
+    else:
+        reason = (f"rejected (not proven yet): neither {h2h_txt} LB > 0.5 nor "
+                  f"{bench_txt} significant at n={challenger_benchmark_games}")
+    return GateDecision(
+        promote=path_a or path_b,
+        relative_pass=h2h_superior,
+        absolute_pass=not bench_regressed,
+        reason=reason,
+    )
+
+
+def statistical_strict_gate(
+    challenger_h2h_score: float,
+    h2h_games: int,
+    challenger_benchmark: float,
+    challenger_benchmark_games: int,
+    champion_benchmark: float,
+    champion_benchmark_games: int,
+    z_promote: float = Z_95,
+    z_regress: float = Z_95,
+) -> GateDecision:
+    """Gate v3 (ADR-007, human-directed): promote ONLY if the challenger
+    beats the champion head-to-head (Wilson LB > 0.5) AND improves on the
+    absolute benchmark (score strictly above the champion's; whether that
+    gain is statistically significant is reported, not required — at 168
+    ladder games significance would need ~+0.09 and would freeze promotion).
+
+    Everything else is rejected, but rejections carry a PARITY signal: h2h
+    confidence interval containing 0.5 with benchmark >= champion's. Parity
+    is not failure — it says the lever is probably sound and under-dosed
+    (e.g. "more episodes got us to parity; double them"). The hypothesis
+    generator reads this flag; the gate does not act on it.
+    """
+    lb = wilson_lower(challenger_h2h_score, h2h_games, z_promote)
+    ub = wilson_upper(challenger_h2h_score, h2h_games, z_promote)
+    h2h_superior = lb > 0.5
+    h2h_parity = lb <= 0.5 <= ub
+    bench_improved = challenger_benchmark > champion_benchmark
+    bench_significant = significantly_better(
+        challenger_benchmark, challenger_benchmark_games,
+        champion_benchmark, champion_benchmark_games, z_promote,
+    )
+    parity = h2h_parity and challenger_benchmark >= champion_benchmark
+    promote = h2h_superior and bench_improved
+
+    h2h_txt = (f"h2h {challenger_h2h_score:.2f} over {h2h_games} games "
+               f"(95% CI {lb:.3f}-{ub:.3f})")
+    bench_txt = (f"bench {challenger_benchmark:.3f} vs champion {champion_benchmark:.3f}"
+                 + (" [significant]" if bench_significant else " [within noise]"))
+    if promote:
+        reason = f"promoted: beats champion ({h2h_txt}) AND improves benchmark ({bench_txt})"
+    elif h2h_superior:
+        reason = (f"rejected: beats champion ({h2h_txt}) but does NOT improve the "
+                  f"benchmark ({bench_txt}) — strict gate requires both")
+    elif parity:
+        reason = (f"rejected at PARITY: {h2h_txt} straddles 0.5 and {bench_txt} — "
+                  f"lever likely sound and under-dosed; hypothesis generator: scale it")
+    elif bench_improved:
+        reason = (f"rejected: improves benchmark ({bench_txt}) but loses head-to-head "
+                  f"({h2h_txt})")
+    else:
+        reason = f"rejected: neither beats champion ({h2h_txt}) nor improves benchmark ({bench_txt})"
+    return GateDecision(
+        promote=promote,
+        relative_pass=h2h_superior,
+        absolute_pass=bench_improved,
+        reason=reason,
+        parity=parity,
+        bench_gain_significant=bench_significant,
+    )
+
+
+GATE_RULES = {
+    "double": statistical_double_gate,   # ADR-era original: h2h win, bench as regression guard
+    "either": statistical_either_gate,   # ADR-005: either axis wins, other must not regress
+    "strict": statistical_strict_gate,   # ADR-007: must win BOTH axes
+}

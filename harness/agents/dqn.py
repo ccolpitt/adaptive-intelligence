@@ -91,30 +91,54 @@ Transition = Tuple[np.ndarray, int, float, np.ndarray, np.ndarray, bool]
 
 
 class ReplayBuffer:
-    """Uniform replay, optionally guaranteeing a fraction of each batch is
-    terminal transitions (``terminal_fraction`` > 0). Sparse +-1 rewards only
-    exist at terminals; uniform sampling starves the value function of them —
-    the connect4-rl precursor diagnosed this and used a 30% terminal quota."""
+    """Uniform replay, with optional guaranteed quotas per batch:
 
-    def __init__(self, capacity: int, seed: int, terminal_fraction: float = 0.0):
+    - ``terminal_fraction``: fraction drawn from terminal transitions.
+      Sparse +-1 rewards only exist at terminals; uniform sampling starves
+      the value function of them (connect4-rl used a 30% quota).
+    - ``tactical_fraction``: fraction drawn from DECISION-CRITICAL
+      transitions — positions where the mover had an immediate win
+      available, or the opponent did (a must-block). These are the moves
+      that decide games; uniform sampling under-trains exactly them."""
+
+    def __init__(
+        self,
+        capacity: int,
+        seed: int,
+        terminal_fraction: float = 0.0,
+        tactical_fraction: float = 0.0,
+    ):
         self.buffer: Deque[Transition] = deque(maxlen=capacity)
         self.terminals: Deque[Transition] = deque(maxlen=capacity)
+        self.tacticals: Deque[Transition] = deque(maxlen=capacity)
         self.terminal_fraction = terminal_fraction
+        self.tactical_fraction = tactical_fraction
         self.rng = random.Random(seed)
 
-    def add(self, t: Transition) -> None:
+    def add(self, t: Transition, tactical: bool = False) -> None:
         self.buffer.append(t)
         if t[5]:
             self.terminals.append(t)
+        if tactical:
+            self.tacticals.append(t)
 
     def sample(self, batch_size: int) -> List[Transition]:
-        k = 0
+        k_term = 0
         if self.terminal_fraction > 0 and self.terminals:
-            k = min(int(round(batch_size * self.terminal_fraction)), len(self.terminals))
-        rest = self.rng.sample(self.buffer, batch_size - k)
-        if k:
-            rest = rest + self.rng.sample(self.terminals, k)
-        return rest
+            k_term = min(int(round(batch_size * self.terminal_fraction)), len(self.terminals))
+        k_tac = 0
+        if self.tactical_fraction > 0 and self.tacticals:
+            k_tac = min(
+                int(round(batch_size * self.tactical_fraction)),
+                len(self.tacticals),
+                batch_size - k_term,
+            )
+        batch = self.rng.sample(self.buffer, batch_size - k_term - k_tac)
+        if k_term:
+            batch = batch + self.rng.sample(self.terminals, k_term)
+        if k_tac:
+            batch = batch + self.rng.sample(self.tacticals, k_tac)
+        return batch
 
     def __len__(self) -> int:
         return len(self.buffer)
@@ -147,6 +171,31 @@ class TrainerConfig:
     # benchmark, and all evaluation stay pure win/lose.
     tactical_shaping: bool = False
     shaping_penalty: float = 0.5
+    # Tactical replay bias (human-proposed): guarantee this fraction of each
+    # training batch comes from decision-critical positions — the mover had
+    # a win-on-next-move available, or faced a must-block. Distinct from
+    # terminal_fraction (game-ending transitions): these are the choice
+    # points one ply EARLIER, where games are actually decided.
+    tactical_fraction: float = 0.0
+    # Monte-Carlo targets (human-proposed, exp-019): at game end, label EVERY
+    # stored transition with the final outcome discounted back to it —
+    # reward_i = (+1 if mover i won else -1) * gamma^(plies_from_end), done=True
+    # — instead of leaving intermediate rewards at 0 and letting bootstrapped
+    # TD targets seep the outcome backward one replay at a time. Credit
+    # reaches move 1 immediately (no propagation lag) at the price of higher
+    # variance (early moves get credited for outcomes they barely influenced).
+    mc_targets: bool = False
+    # Search during TRAINING only (exp-021; evaluation stays bare inference —
+    # the benchmark ruler is untouched). train_search_depth = k > 0 makes the
+    # learner pick its self-play moves by k-ply lookahead over its own Q
+    # (epsilon-greedy on top): it learns from stronger games. search_targets
+    # additionally makes the TRAINING TARGET of each stored move the
+    # search-backed value of that move (done=True, supervised) instead of the
+    # one-step TD estimate — the network distills the search into instinct
+    # (expert iteration; AlphaZero's policy-improvement step). Shaping is NOT
+    # added on top of search targets: the search already sees the tactics.
+    train_search_depth: int = 0
+    search_targets: bool = False
 
 
 @dataclass
@@ -154,6 +203,9 @@ class EpisodeStats:
     moves: int
     winner: Optional[int]
     losses: List[float] = field(default_factory=list)
+    grad_norms: List[float] = field(default_factory=list)  # pre-clip L2 norm per step
+    q_abs_means: List[float] = field(default_factory=list)  # mean |Q(s,a)| per step; healthy in [0, 1]
+    learner_result: int = 0  # +1 learner won, -1 lost, 0 draw/unfinished
 
 
 class DQNTrainer:
@@ -173,11 +225,17 @@ class DQNTrainer:
             self.net.parameters(), lr=config.lr, weight_decay=config.weight_decay
         )
         self.buffer = ReplayBuffer(
-            config.buffer_capacity, config.seed, config.terminal_fraction
+            config.buffer_capacity,
+            config.seed,
+            config.terminal_fraction,
+            config.tactical_fraction,
         )
         self.eps = config.eps_start
         self.episodes_done = 0
         self.rng = np.random.default_rng(config.seed)
+        # Exploration coverage telemetry: hashes of every position the
+        # LEARNER faced (mover-perspective), cumulative across the run.
+        self.unique_states_seen: set = set()
 
     # -- inference ------------------------------------------------------
 
@@ -196,12 +254,25 @@ class DQNTrainer:
         self.net.load_state_dict(module.state_dict())
         self.target.load_state_dict(module.state_dict())
 
+    def decision_values(self, obs: np.ndarray) -> np.ndarray:
+        """Values the learner ACTS on during training: raw Q, or search-backed
+        values when train_search_depth > 0 (training-only lookahead)."""
+        if self.cfg.train_search_depth > 0:
+            from ..lookahead import LookaheadQ
+
+            return np.asarray(
+                LookaheadQ(self.q_function(), depth=self.cfg.train_search_depth,
+                           gamma=self.cfg.gamma)(obs),
+                dtype=np.float64,
+            )
+        return np.asarray(self.q_function()(obs), dtype=np.float64)
+
     def select_action(self, obs: np.ndarray, legal: List[int]) -> int:
         if self.rng.random() < self.eps:
             return int(self.rng.choice(legal))
-        q = self.q_function()(obs)
+        values = self.decision_values(obs)
         masked = np.full(self.n_actions, -np.inf, dtype=np.float64)
-        masked[legal] = q[legal]
+        masked[legal] = values[legal]
         return int(np.argmax(masked))
 
     # -- experience -----------------------------------------------------
@@ -229,6 +300,9 @@ class DQNTrainer:
         obs = env.reset()
         pending: List[Transition] = []
         movers: List[int] = []  # +1 / -1, aligned with pending
+        tactical_flags: List[bool] = []  # decision-critical position, aligned with pending
+        shape_deltas: List[float] = []  # shaping component of each stored reward
+        plies: List[int] = []  # ply index of each stored transition
         moves = 0
 
         def legal_mask() -> np.ndarray:
@@ -242,11 +316,25 @@ class DQNTrainer:
             learner_to_move = (mover == 1) == learner_is_p1
             will_store = learner_to_move or self.cfg.store_opponent_transitions
             my_wins = opp_wins = None
-            if self.cfg.tactical_shaping and will_store and hasattr(env, "winning_moves"):
+            wants_tactics = self.cfg.tactical_shaping or self.cfg.tactical_fraction > 0
+            if wants_tactics and will_store and hasattr(env, "winning_moves"):
                 my_wins = env.winning_moves(mover)
                 opp_wins = env.winning_moves(-mover)
+            search_values = None
             if learner_to_move:
-                action = self.select_action(obs, legal)
+                self.unique_states_seen.add(hash(obs.tobytes()))
+                if self.cfg.search_targets or self.cfg.train_search_depth > 0:
+                    # one search per learner move, reused for both acting and
+                    # (if search_targets) the stored training target
+                    search_values = self.decision_values(obs)
+                    if self.rng.random() < self.eps:
+                        action = int(self.rng.choice(legal))
+                    else:
+                        masked = np.full(self.n_actions, -np.inf, dtype=np.float64)
+                        masked[legal] = search_values[legal]
+                        action = int(np.argmax(masked))
+                else:
+                    action = self.select_action(obs, legal)
             elif opponent_act is not None:
                 action = opponent_act(obs, legal)
             else:
@@ -256,20 +344,49 @@ class DQNTrainer:
                 action = int(np.argmax(masked))
             result = env.step(action)
             if will_store:
-                reward = result.reward
-                if my_wins is not None:
-                    reward += shaping_delta(my_wins, opp_wins, action, self.cfg.shaping_penalty)
-                pending.append(
-                    (obs, action, reward, result.next_obs, legal_mask(), result.done)
-                )
+                delta = 0.0
+                if my_wins is not None and self.cfg.tactical_shaping:
+                    delta = shaping_delta(my_wins, opp_wins, action, self.cfg.shaping_penalty)
+                if self.cfg.search_targets:
+                    # Distillation target: the search-backed value of the move
+                    # actually played, computed from OUR net at play time
+                    # (search_values is set below before the step for learner
+                    # moves; recomputed here for stored opponent moves).
+                    sv = search_values if (learner_to_move and search_values is not None) \
+                        else self.decision_values(obs)
+                    pending.append(
+                        (obs, action, float(sv[action]), result.next_obs, legal_mask(), True)
+                    )
+                else:
+                    pending.append(
+                        (obs, action, result.reward + delta, result.next_obs, legal_mask(), result.done)
+                    )
                 movers.append(mover)
+                tactical_flags.append(bool(my_wins) or bool(opp_wins))
+                shape_deltas.append(delta)
+                plies.append(moves)
             moves += 1
             obs = result.next_obs
             if result.done:
                 break
 
+        # Monte-Carlo labeling (mc_targets): discount the final outcome back
+        # to every stored move — reward = outcome_for_mover * gamma^d (+ its
+        # shaping delta), done=True, so the train-step target is the label
+        # itself (no bootstrapping, no propagation lag). Subsumes the loser
+        # rewrite below.
+        if self.cfg.mc_targets:
+            last_ply = moves - 1
+            w = result.winner
+            for i, (t, m, delta, p) in enumerate(zip(pending, movers, shape_deltas, plies)):
+                o, a, _, no, mask, _ = t
+                outcome = 0.0 if w in (None, 0) else (1.0 if m == w else -1.0)
+                label = outcome * (self.cfg.gamma ** (last_ply - p)) + delta
+                pending[i] = (o, a, label, no, mask, True)
         # Explicit loss attribution: rewrite the loser's final transition.
-        if result.winner is not None and result.winner != 0:
+        # (Not under search_targets: the search value of the losing move is
+        # already -gamma*1 — the search saw the opponent's win.)
+        elif result.winner is not None and result.winner != 0 and not self.cfg.search_targets:
             loser = -result.winner
             for i in range(len(pending) - 1, -1, -1):
                 if movers[i] == loser:
@@ -277,19 +394,26 @@ class DQNTrainer:
                     pending[i] = (o, a, -1.0, no, m, True)
                     break
 
-        for t in pending:
-            self.buffer.add(t)
+        for t, tactical in zip(pending, tactical_flags):
+            self.buffer.add(t, tactical=tactical)
             if self.cfg.mirror_augmentation:
-                self.buffer.add(self._mirror(t))
+                self.buffer.add(self._mirror(t), tactical=tactical)
 
         self.episodes_done += 1
         self.eps = max(self.cfg.eps_end, self.eps * self.cfg.eps_decay)
 
-        stats = EpisodeStats(moves=moves, winner=result.winner)
+        learner_side = 1 if learner_is_p1 else -1
+        learner_result = 0
+        if result.winner is not None and result.winner != 0:
+            learner_result = 1 if result.winner == learner_side else -1
+        stats = EpisodeStats(moves=moves, winner=result.winner, learner_result=learner_result)
         for _ in range(self.cfg.train_steps_per_episode):
-            loss = self._train_step()
-            if loss is not None:
+            step = self._train_step()
+            if step is not None:
+                loss, grad_norm, q_abs = step
                 stats.losses.append(loss)
+                stats.grad_norms.append(grad_norm)
+                stats.q_abs_means.append(q_abs)
         if self.episodes_done % self.cfg.target_update_every == 0:
             self.target.load_state_dict(self.net.state_dict())
         return stats
@@ -309,7 +433,11 @@ class DQNTrainer:
 
     # -- learning -------------------------------------------------------
 
-    def _train_step(self) -> Optional[float]:
+    def _train_step(self) -> Optional[Tuple[float, float, float]]:
+        """One gradient step. Returns (loss, pre-clip gradient L2 norm, mean |Q|) —
+        the norm is the size of the correction signal flowing through the
+        net: exploding = instability, collapsing toward zero alongside a
+        rising dead-weight fraction = plasticity loss (Phase 4 telemetry)."""
         if len(self.buffer) < self.cfg.batch_size:
             return None
         batch = self.buffer.sample(self.cfg.batch_size)
@@ -331,9 +459,13 @@ class DQNTrainer:
         loss = nn.functional.mse_loss(q, target)
         self.optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
+        # clip_grad_norm_ returns the TOTAL norm before clipping — exactly
+        # the diagnostic we want, for free.
+        grad_norm = nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
         self.optimizer.step()
-        return float(loss.item())
+        # mean |Q| of the chosen actions: rewards are +-1 and gamma < 1, so
+        # true values live in [-1, 1] — a drift above ~1 is miscalibration.
+        return float(loss.item()), float(grad_norm), float(q.detach().abs().mean().item())
 
     # -- diagnostics ----------------------------------------------------
 

@@ -43,6 +43,26 @@ def wilson_lower(score: float, n: int, z: float = Z_95) -> float:
     return wilson_interval(score, n, z)[0]
 
 
+def wilson_upper(score: float, n: int, z: float = Z_95) -> float:
+    return wilson_interval(score, n, z)[1]
+
+
+def plateaued(history: list, patience: int, min_delta: float) -> bool:
+    """Has a maximized score series stopped improving?
+
+    True iff the best score in the last ``patience`` entries fails to beat
+    the best score before them by more than ``min_delta``. Answers "would
+    more episodes still buy anything?" — the scaling question — from the
+    run's own curve instead of faith. Needs at least patience+1 points;
+    ``min_delta`` should sit near the benchmark's noise floor (see
+    ``detectable_effect``) so noise wiggles don't count as progress."""
+    if patience <= 0 or len(history) <= patience:
+        return False
+    best_before = max(history[:-patience])
+    best_recent = max(history[-patience:])
+    return best_recent <= best_before + min_delta
+
+
 def significantly_better(
     score_a: float, n_a: int, score_b: float, n_b: int, z: float = Z_95
 ) -> bool:
