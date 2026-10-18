@@ -1,0 +1,337 @@
+{
+  "policy_id": "connect4-pol-00065",
+  "task_ref": "connect4@v2",
+  "generated_at": "2026-09-20T04:56:23.911260+00:00",
+  "probe_config": {
+    "games": 60,
+    "seed": 0,
+    "opponent": "seeded-random"
+  },
+  "worst_status": "fail",
+  "sections": {
+    "identity": [
+      {
+        "name": "generation",
+        "status": "info",
+        "value": 12.0,
+        "expectation": "lineage depth from gen-0 seed",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "parent",
+        "status": "info",
+        "value": null,
+        "expectation": "lineage link",
+        "note": "connect4-pol-00061",
+        "detail": {}
+      },
+      {
+        "name": "experiment",
+        "status": "info",
+        "value": null,
+        "expectation": "the hypothesis that produced this policy",
+        "note": "exp-009-big-swing",
+        "detail": {}
+      },
+      {
+        "name": "epitaph",
+        "status": "info",
+        "value": null,
+        "expectation": "why it lived or died",
+        "note": "promoted: h2h 0.58 over 200 games (95% LB 0.519) > 0.5, no significant benchmark regression (bench 0.083 vs champion 0.051)",
+        "detail": {}
+      }
+    ],
+    "benchmark": [
+      {
+        "name": "score vs connect4-pol-00061",
+        "status": "info",
+        "value": 0.5775,
+        "expectation": "authoritative, versioned score",
+        "note": "",
+        "detail": {
+          "wins": 115,
+          "losses": 84,
+          "draws": 1,
+          "games": 200
+        }
+      },
+      {
+        "name": "score vs connect4-benchmark@v1",
+        "status": "info",
+        "value": 0.08333333333333333,
+        "expectation": "authoritative, versioned score",
+        "note": "",
+        "detail": {
+          "per_rung": {
+            "1": 0.3393,
+            "2": 0.0179,
+            "3": 0.1429,
+            "4": 0.0,
+            "5": 0.0,
+            "6": 0.0
+          },
+          "frontier_depth": 1,
+          "games_per_rung": 28,
+          "games_total": 168,
+          "mastery_per_rung": 0.9
+        }
+      }
+    ],
+    "value_calibration": [
+      {
+        "name": "q_nonfinite_count",
+        "status": "ok",
+        "value": 0.0,
+        "expectation": "0 \u2014 any NaN/inf Q value means training is broken",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "q_mean_abs",
+        "status": "ok",
+        "value": 0.1947861142712017,
+        "expectation": "within [0, 1] \u2014 rewards are \u00b11 and gamma < 1, so true Q lives in [-1, 1]",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "q_max_abs",
+        "status": "warn",
+        "value": 1.7704029083251953,
+        "expectation": "<= 1.5 \u2014 estimates far outside the reward scale mean divergence",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "q_of_game_winning_moves",
+        "status": "ok",
+        "value": 0.9645300010840098,
+        "expectation": "-> +1 \u2014 the net should KNOW a winning move at the moment it is played",
+        "note": "",
+        "detail": {
+          "n": 60
+        }
+      }
+    ],
+    "tactics": [
+      {
+        "name": "take_the_win_rate",
+        "status": "warn",
+        "value": 0.9384615384615385,
+        "expectation": "-> 1.0 \u2014 an immediate win on the board should always be taken",
+        "note": "",
+        "detail": {
+          "n": 65
+        }
+      },
+      {
+        "name": "q_of_winning_move_available",
+        "status": "ok",
+        "value": 0.9056594215906584,
+        "expectation": "-> +1 (connect4-rl offensive threat check)",
+        "note": "",
+        "detail": {
+          "n": 65
+        }
+      },
+      {
+        "name": "block_the_loss_rate",
+        "status": "warn",
+        "value": 0.8974358974358975,
+        "expectation": "-> 1.0 \u2014 an opponent's immediate win must be blocked",
+        "note": "",
+        "detail": {
+          "n": 78
+        }
+      },
+      {
+        "name": "q_of_not_blocking",
+        "status": "ok",
+        "value": -0.8532688644241031,
+        "expectation": "-> -1 (connect4-rl defensive threat check)",
+        "note": "",
+        "detail": {
+          "n": 78
+        }
+      }
+    ],
+    "value_propagation": [
+      {
+        "name": "endgame_q_magnitude",
+        "status": "ok",
+        "value": 0.9645300010840098,
+        "expectation": "-> 1 at the final state; earlier states decay until value propagates back",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "value_horizon_plies",
+        "status": "info",
+        "value": 0.0,
+        "expectation": "grows with training \u2014 how many plies from the end |maxQ| stays >= 0.5",
+        "note": "",
+        "detail": {
+          "decay_curve": [
+            0.9645,
+            0.2307,
+            0.246,
+            0.1127,
+            0.0817,
+            0.0567,
+            0.0578,
+            0.0516,
+            0.0787,
+            0.0532,
+            0.0565,
+            0.0401,
+            0.0529,
+            0.0306,
+            0.0286,
+            0.0546,
+            0.0316,
+            0.0507,
+            0.0259,
+            0.0347,
+            0.0346,
+            0.0106,
+            0.0778,
+            0.0112,
+            0.0108,
+            0.0107,
+            0.0131,
+            0.0119,
+            0.0042,
+            0.0174
+          ]
+        }
+      }
+    ],
+    "exploration": [
+      {
+        "name": "unique_states_in_probe",
+        "status": "info",
+        "value": 420.0,
+        "expectation": "more is better; compare across cards at equal probe size",
+        "note": "",
+        "detail": {
+          "games": 60,
+          "avg_game_plies": 10.87
+        }
+      },
+      {
+        "name": "probe_score_vs_random",
+        "status": "info",
+        "value": 1.0,
+        "expectation": "informational \u2014 the versioned benchmark is the authoritative score",
+        "note": "",
+        "detail": {}
+      }
+    ],
+    "network_health": [
+      {
+        "name": "nonfinite_weights",
+        "status": "ok",
+        "value": 0.0,
+        "expectation": "0 \u2014 NaN/inf weights mean the optimizer diverged",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "dead_weight_fraction",
+        "status": "ok",
+        "value": 0.2769313156604767,
+        "expectation": "|w| < 0.01: should stay roughly constant over training (rising = plasticity loss, the Phase 4 signal)",
+        "note": "",
+        "detail": {}
+      },
+      {
+        "name": "exploding_weight_fraction",
+        "status": "ok",
+        "value": 0.0,
+        "expectation": "|w| > 10.0: ~0 \u2014 growth means instability",
+        "note": "",
+        "detail": {
+          "weight_std": 0.04754301905632019,
+          "weight_max_abs": 0.8619533181190491,
+          "total_params": 182919
+        }
+      }
+    ],
+    "solver_calibration": [
+      {
+        "name": "q_at_solver_proven_wins",
+        "status": "ok",
+        "value": 0.6588218442418359,
+        "expectation": "-> +1: the solver proves a forced win exists from here",
+        "note": "",
+        "detail": {
+          "n": 11,
+          "solver_depth": 8
+        }
+      },
+      {
+        "name": "q_at_solver_proven_losses",
+        "status": "ok",
+        "value": -0.6699653267860413,
+        "expectation": "-> -1: the solver proves EVERY move loses from here \u2014 a calibrated value function knows when it is beaten",
+        "note": "",
+        "detail": {
+          "n": 1,
+          "solver_depth": 8
+        }
+      }
+    ],
+    "training_telemetry": [
+      {
+        "name": "training_loss_trend",
+        "status": "fail",
+        "value": 1.2919138346709957,
+        "expectation": "< 1 \u2014 loss (MSE Bellman error) should decrease over the run",
+        "note": "",
+        "detail": {
+          "first_fifth_mean": 0.0267711987907138,
+          "last_fifth_mean": 0.03458608208845059
+        }
+      },
+      {
+        "name": "benchmark_trajectory",
+        "status": "ok",
+        "value": 0.029761904761904753,
+        "expectation": "rising across iterations \u2014 the loop's whole point",
+        "note": "",
+        "detail": {
+          "scores": [
+            0.0536,
+            0.0476,
+            0.0417,
+            0.0417,
+            0.0238,
+            0.0357,
+            0.0625,
+            0.0536,
+            0.0804,
+            0.0625,
+            0.0506,
+            0.0476,
+            0.0655,
+            0.0476,
+            0.0833
+          ]
+        }
+      },
+      {
+        "name": "dormant_neuron_trend",
+        "status": "ok",
+        "value": -0.02623688615858555,
+        "expectation": "flat \u2014 a rising dormant fraction is plasticity loss (Dohare et al. 2024)",
+        "note": "",
+        "detail": {
+          "first_mean": 0.152,
+          "last_mean": 0.1258
+        }
+      }
+    ]
+  }
+}

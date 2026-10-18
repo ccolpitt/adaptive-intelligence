@@ -1,0 +1,81 @@
+POLICY PERFORMANCE CARD — connect4-pol-00187 on connect4@v2
+generated 2026-10-03T21:38:19 | worst status: FAIL
+probe: {'games': 40, 'seed': 0, 'opponent': 'seeded-random'}
+========================================================================
+
+IDENTITY
+  [info] generation = 14
+         expect: lineage depth from gen-0 seed
+  [info] parent
+         expect: lineage link
+         note:   connect4-pol-00148
+  [info] experiment
+         expect: the hypothesis that produced this policy
+         note:   exp-019-mc-targets-seed22
+  [info] epitaph
+         expect: why it lived or died
+         note:   rejected (not proven yet): neither h2h 0.32 over 200 games (95% CI 0.268-0.376) LB > 0.5 nor bench 0.048 vs champion 0.071 significant at n=168
+
+BENCHMARK
+  [info] score vs connect4-pol-00148 = 0.32
+         expect: authoritative, versioned score
+  [info] score vs connect4-benchmark@v1 = 0.04762
+         expect: authoritative, versioned score
+
+VALUE_CALIBRATION
+  [ ok ] q_nonfinite_count = 0
+         expect: 0 — any NaN/inf Q value means training is broken
+  [ ok ] q_mean_abs = 0.4159
+         expect: within [0, 1] — rewards are ±1 and gamma < 1, so true Q lives in [-1, 1]
+  [WARN] q_max_abs = 2.134
+         expect: <= 1.5 — estimates far outside the reward scale mean divergence
+  [ ok ] q_of_game_winning_moves = 0.6304
+         expect: -> +1 — the net should KNOW a winning move at the moment it is played
+
+TACTICS
+  [FAIL] take_the_win_rate = 0.4405
+         expect: -> 1.0 — an immediate win on the board should always be taken
+  [WARN] q_of_winning_move_available = 0.3645
+         expect: -> +1 (connect4-rl offensive threat check)
+  [FAIL] block_the_loss_rate = 0.4828
+         expect: -> 1.0 — an opponent's immediate win must be blocked
+  [ ok ] q_of_not_blocking = -0.5716
+         expect: -> -1 (connect4-rl defensive threat check)
+
+VALUE_PROPAGATION
+  [ ok ] endgame_q_magnitude = 0.7047
+         expect: -> 1 at the final state; earlier states decay until value propagates back
+  [info] value_horizon_plies = 4
+         expect: grows with training — how many plies from the end |maxQ| stays >= 0.5
+
+EXPLORATION
+  [info] unique_states_in_probe = 428
+         expect: more is better; compare across cards at equal probe size
+  [info] probe_score_vs_random = 0.85
+         expect: informational — the versioned benchmark is the authoritative score
+
+NETWORK_HEALTH
+  [ ok ] nonfinite_weights = 0
+         expect: 0 — NaN/inf weights mean the optimizer diverged
+  [ ok ] dead_weight_fraction = 0.1103
+         expect: |w| < 0.01: should stay roughly constant over training (rising = plasticity loss, the Phase 4 signal)
+  [ ok ] exploding_weight_fraction = 0
+         expect: |w| > 10.0: ~0 — growth means instability
+
+SOLVER_CALIBRATION
+  [WARN] q_at_solver_proven_wins = 0.4595
+         expect: -> +1: the solver proves a forced win exists from here
+  [FAIL] q_at_solver_proven_losses = 0.24
+         expect: -> -1: the solver proves EVERY move loses from here — a calibrated value function knows when it is beaten
+
+TRAINING_TELEMETRY
+  [WARN] training_loss_trend = 1.081
+         expect: < 1 — loss (MSE Bellman error) should decrease over the run
+  [ ok ] training_q_mean_abs_recent = 0.5767
+         expect: within [0, 1] throughout training — rewards are ±1, gamma < 1; drift above ~1 during training is value miscalibration
+  [ ok ] gradient_norm_trend = 0.6543
+         expect: roughly steady or declining — exploding = instability; collapsing to ~0 with rising dead weights = plasticity loss
+  [WARN] benchmark_trajectory = 0
+         expect: rising across iterations — the loop's whole point
+  [ ok ] dormant_neuron_trend = -0.005195
+         expect: flat — a rising dormant fraction is plasticity loss (Dohare et al. 2024)
