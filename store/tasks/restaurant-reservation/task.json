@@ -1,0 +1,9 @@
+{
+  "task_id": "restaurant-reservation",
+  "name": "Make a restaurant reservation",
+  "description": "Hold a conversation or navigate a site to secure a reservation matching a request. Like flight booking but cheaper to retry, so a better first step into tasks with no rulebook.",
+  "status": "declared",
+  "current_evaluation": null,
+  "notes": "",
+  "created_at": "2026-10-18T23:39:03.114757+00:00"
+}

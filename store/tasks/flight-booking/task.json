@@ -1,0 +1,9 @@
+{
+  "task_id": "flight-booking",
+  "name": "Book a flight",
+  "description": "Given a request in words, book a flight that satisfies it. The first task with no rulebook: there is nothing to search through exactly, so looking ahead requires a learned model of how the world responds, and the gap between that model and reality has to be handled honestly.",
+  "status": "declared",
+  "current_evaluation": null,
+  "notes": "Success is a real outcome (the right flight was booked within constraints) and is verifiable but expensive, and mistakes cost real money. Needs the learned-model path in learning rule 5.",
+  "created_at": "2026-10-18T23:39:03.114568+00:00"
+}

@@ -1,0 +1,9 @@
+{
+  "task_id": "connect4-variants",
+  "name": "Win Connect 4 variants",
+  "description": "The same game on different board sizes and win lengths (connect 3 on 5x5, connect 4 on 8x8, and so on). The planned second task, used to measure whether mastering one game makes the next cheaper.",
+  "status": "declared",
+  "current_evaluation": null,
+  "notes": "Scorer is the same kind as Connect 4 \u2014 a depth-limited perfect opponent \u2014 so success is objective and cheap to define.",
+  "created_at": "2026-10-18T23:39:03.114115+00:00"
+}

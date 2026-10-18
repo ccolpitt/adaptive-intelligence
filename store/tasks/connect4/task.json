@@ -1,0 +1,9 @@
+{
+  "task_id": "connect4",
+  "name": "Win Connect 4",
+  "description": "Play Connect 4 well enough to beat perfect-play opponents. The first task of the project: small enough to iterate on quickly, and it has a perfect scorer, so progress is never a matter of opinion.",
+  "status": "active",
+  "current_evaluation": 1,
+  "notes": "Also the first task for the transfer question: a second, related game should be learnable in fewer games because of what was learned here.",
+  "created_at": "2026-10-18T23:39:03.112804+00:00"
+}

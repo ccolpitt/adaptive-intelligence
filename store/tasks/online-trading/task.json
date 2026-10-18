@@ -1,0 +1,9 @@
+{
+  "task_id": "online-trading",
+  "name": "Make money buying and selling things online",
+  "description": "Buy and sell goods for a profit. The environment supplies its own score \u2014 money \u2014 which makes success objective, but it is not fixed the way a game opponent is: the world changes underneath, so a score from last year is not comparable with one from today.",
+  "status": "declared",
+  "current_evaluation": null,
+  "notes": "Open question for this task: how to define a stationary evaluation when the environment itself drifts. Likely needs a recorded, replayable market period as the frozen scorer.",
+  "created_at": "2026-10-18T23:39:03.114938+00:00"
+}

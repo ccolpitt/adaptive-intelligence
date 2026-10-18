@@ -1,0 +1,9 @@
+{
+  "task_id": "chess",
+  "name": "Win at chess",
+  "description": "A much larger game with the same shape of scorer: an engine at a fixed strength setting. Tests whether the approach survives a big jump in the number of possible positions and moves.",
+  "status": "declared",
+  "current_evaluation": null,
+  "notes": "Success stays objective, but no perfect player exists, so the scorer becomes a frozen engine at a pinned version and setting.",
+  "created_at": "2026-10-18T23:39:03.114318+00:00"
+}

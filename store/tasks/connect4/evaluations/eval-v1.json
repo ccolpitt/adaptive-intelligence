@@ -1,0 +1,31 @@
+{
+  "task_id": "connect4",
+  "version": 1,
+  "ref": "connect4-eval@v1",
+  "success_means": "Beat progressively stronger perfect-play opponents at Connect 4. A policy has mastered the task when it wins or draws at least 90% of games against every opponent on the ladder, including one that plays perfectly six moves deep.",
+  "scorer_kind": "exact_opponent",
+  "procedure": {
+    "opponents": "negamax search with alpha-beta pruning over the real rules, at fixed depths 1, 2, 3, 4, 5 and 6 (an opponent of exactly known strength, not an estimate)",
+    "openings": "14 fixed opening sequences (7 of one move, 7 of two moves), chosen once with a recorded seed and frozen",
+    "seats": "each opening played twice, once with the policy moving first and once second",
+    "games_per_opponent": 28,
+    "games_total": 168,
+    "determinism": "the opponents and openings are fixed, so the only variation between runs is the policy itself"
+  },
+  "scoring": {
+    "per_game": "win = 1, draw = 0.5, loss = 0",
+    "per_opponent": "mean over that opponent's 28 games",
+    "headline": "mean of the six per-opponent scores, in [0, 1]",
+    "frontier_depth": "the shallowest opponent not yet beaten 90% of the time \u2014 reports which opponent is next"
+  },
+  "mastery": {
+    "per_opponent": 0.9,
+    "headline_equivalent": 0.9,
+    "note": "the headline average can be lifted by easy rungs, so mastery requires the threshold at EVERY depth"
+  },
+  "inference_rule": "The policy reads the position once and commits to a move. No lookahead, no search, no assistance. Lookahead during training is unrestricted; see learning rules 1 and 2.",
+  "noise_floor": 0.09,
+  "implemented_by": "harness.tasks.connect4_ladder.Connect4LadderBenchmark",
+  "notes": "Deliberately absolute rather than relative. An earlier project measured only wins against previous versions of itself, promoted 32 times, and never knew whether it was any good. A fixed opponent of known strength is what makes a score mean something years later.",
+  "created_at": "2026-10-18T23:39:03.113371+00:00"
+}
