@@ -196,6 +196,21 @@ class TrainerConfig:
     # added on top of search targets: the search already sees the tactics.
     train_search_depth: int = 0
     search_targets: bool = False
+    # Budgeted lookahead during training (rubric r002 onward). The budget is a
+    # number of states the policy may examine before each move, and spend_rule
+    # is how it is permitted to choose them — see budgeted_search.make_search.
+    # Supersedes train_search_depth, which spent its budget uniformly.
+    search_budget: int = 0
+    spend_rule: str = "puct"
+    c_puct: float = 1.4
+    prior_temperature: float = 0.5
+    # Randomization of the lookahead at the root, so training games vary.
+    # Always zero at evaluation.
+    search_dirichlet: float = 0.25
+    # Clamp training targets into the range rewards actually span. exp-022
+    # failed because unbounded search-derived targets inflated the value scale
+    # until a good move outranked a winning one; this is that fix.
+    bounded_targets: bool = False
 
 
 @dataclass
@@ -236,6 +251,11 @@ class DQNTrainer:
         # Exploration coverage telemetry: hashes of every position the
         # LEARNER faced (mover-perspective), cumulative across the run.
         self.unique_states_seen: set = set()
+        self._search = None  # built on first use when a budget is configured
+        # How much lookahead this trainer actually used, for the cycle record.
+        self.search_states_examined = 0
+        self.search_moves = 0
+        self.search_deepest = 0
 
     # -- inference ------------------------------------------------------
 
@@ -254,10 +274,44 @@ class DQNTrainer:
         self.net.load_state_dict(module.state_dict())
         self.target.load_state_dict(module.state_dict())
 
+    def _live_q(self, obs: np.ndarray) -> np.ndarray:
+        """The current network's ratings. Defined as a method rather than a
+        closure so a search object built once keeps seeing updated weights."""
+        self.net.eval()
+        with torch.no_grad():
+            t = torch.from_numpy(obs).float().unsqueeze(0)
+            return self.net(t).squeeze(0).numpy()
+
+    @property
+    def search(self):
+        """The lookahead the policy is allowed during training, or None."""
+        if self.cfg.search_budget <= 0:
+            return None
+        if self._search is None:
+            from ..budgeted_search import make_search
+
+            self._search = make_search(
+                self._live_q,
+                budget=self.cfg.search_budget,
+                spend_rule=self.cfg.spend_rule,
+                n_actions=self.n_actions,
+                rows=self.rows,
+                cols=self.cols,
+                c_puct=self.cfg.c_puct,
+                prior_temperature=self.cfg.prior_temperature,
+                gamma=self.cfg.gamma,
+                dirichlet_noise=self.cfg.search_dirichlet,
+                seed=self.cfg.seed,
+            )
+        return self._search
+
     def decision_values(self, obs: np.ndarray) -> np.ndarray:
-        """Values the learner ACTS on during training: raw Q, or search-backed
-        values when train_search_depth > 0 (training-only lookahead)."""
-        if self.cfg.train_search_depth > 0:
+        """The values the learner ACTS on during training: its raw ratings, or
+        the conclusions of a budgeted lookahead when it is allowed one."""
+        search = self.search
+        if search is not None:
+            return np.asarray(search(obs), dtype=np.float64)
+        if self.cfg.train_search_depth > 0:  # superseded; kept for old experiments
             from ..lookahead import LookaheadQ
 
             return np.asarray(
@@ -323,10 +377,15 @@ class DQNTrainer:
             search_values = None
             if learner_to_move:
                 self.unique_states_seen.add(hash(obs.tobytes()))
-                if self.cfg.search_targets or self.cfg.train_search_depth > 0:
+                if (self.cfg.search_targets or self.cfg.train_search_depth > 0
+                        or self.cfg.search_budget > 0):
                     # one search per learner move, reused for both acting and
                     # (if search_targets) the stored training target
                     search_values = self.decision_values(obs)
+                    if self.search is not None:
+                        self.search_moves += 1
+                        self.search_states_examined = self.search.total_nodes_evaluated
+                        self.search_deepest = self.search.deepest_reached
                     if self.rng.random() < self.eps:
                         action = int(self.rng.choice(legal))
                     else:
@@ -348,14 +407,17 @@ class DQNTrainer:
                 if my_wins is not None and self.cfg.tactical_shaping:
                     delta = shaping_delta(my_wins, opp_wins, action, self.cfg.shaping_penalty)
                 if self.cfg.search_targets:
-                    # Distillation target: the search-backed value of the move
-                    # actually played, computed from OUR net at play time
-                    # (search_values is set below before the step for learner
-                    # moves; recomputed here for stored opponent moves).
+                    # The network is trained to rate the move it played as the
+                    # lookahead valued it: deliberation becoming instinct.
                     sv = search_values if (learner_to_move and search_values is not None) \
                         else self.decision_values(obs)
+                    target = float(sv[action])
+                    if self.cfg.bounded_targets:
+                        # Rewards span [-1, 1], so a value outside it is an
+                        # artefact. Clamping stops the scale inflating.
+                        target = float(np.clip(target, -1.0, 1.0))
                     pending.append(
-                        (obs, action, float(sv[action]), result.next_obs, legal_mask(), True)
+                        (obs, action, target, result.next_obs, legal_mask(), True)
                     )
                 else:
                     pending.append(

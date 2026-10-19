@@ -536,6 +536,68 @@ task family exhausts what human-authored benchmarks can cheaply cover, i.e. we
 start wanting to train on tasks (open-ended generation, interaction) where writing
 the oracle is itself the bottleneck. Records an ADR when promoted.
 
+## Phase 8 — Growing a Policy Instead of Restarting It (filed 2026-10-23)
+
+**Status: recorded, not started.** Human-proposed; nothing here is to be acted
+on until the current line of policies can master Connect 4.
+
+Every experiment so far trains a policy from random weights. That is the right
+discipline while the question is "does this change help?", because a fresh
+start removes any confound from what the previous policy happened to know. But
+it is the opposite of the project's own hypothesis: a system that gets better
+at learning cannot begin from nothing each time. Eventually a hypothesis
+should be tested by *continuing* from a trained policy, and the act of
+continuing well is itself something to learn rules for.
+
+Three directions, each already a candidate hypothesis:
+
+**8a — Perturb the network before continuing.** A trained network is not a
+clean slate but also not fully used: some connections have gone to zero and
+contribute nothing, some capacity is spent on patterns no longer relevant.
+Candidate operations, each a single testable change:
+- remove connections that have gone to zero (pruning), and measure whether the
+  smaller network keeps its score;
+- re-initialise the connections that have gone silent, returning capacity to
+  usefulness without discarding what the rest of the network knows;
+- add new units or a new layer to a policy that has plateaued, and test
+  whether it resumes improving — growth triggered by a diagnosis rather than
+  chosen in advance, as Component 1's tenets require.
+Prior art to cite when this runs: continual backpropagation and the
+loss-of-plasticity literature (Dohare et al., *Nature* 2024), pruning
+(Han et al. 2015; the lottery-ticket line), and progressive networks
+(Rusu et al. 2016) for growth.
+
+**8b — Order the curriculum deliberately, and keep reviewing.** Switching
+hard from one task to another is how a network forgets the first: the weights
+that encoded task A are overwritten by whatever serves task B. The remedy is
+not exotic — keep practising A while learning B, which is what interleaved
+rehearsal means and is the strongest known defence against forgetting
+(working hypothesis (e)). Open questions this phase should answer with
+measurements rather than assertions: how much review is enough; whether
+review should be real past experience or imagined from a world model
+(hypothesis (h)); and whether the right review schedule can be *learned*
+rather than set by hand — which is the same absorption the scheduler is
+already slated for in Phase 3b.
+
+**8c — Make plasticity selective rather than global.** Today every weight is
+equally free to change at every moment, which is why learning something new
+endangers something old. Two candidate mechanisms:
+- reduce the plasticity of the parts of the network that have mastered
+  something, so mastery is protected rather than merely hoped for (the
+  importance-weighted-stiffness idea behind elastic weight consolidation,
+  Kirkpatrick et al. 2017);
+- localise plasticity by task similarity, so a task close to one already
+  learned adapts the same region, while an unrelated task is pushed into
+  fresh capacity — which would also give a measurable definition of "these
+  two tasks are related", currently an informal notion in Phase 2.
+
+**Why this is deferred rather than queued:** every direction here is about
+*continuing* well, and we do not yet have a policy worth continuing from —
+the best score so far is 0.116 out of 1.0 with no lookahead. Starting fresh
+is still cheap and still the cleanest way to attribute a change. The trigger
+to promote this phase: a lineage reaches mastery, or reaches a plateau that
+a from-scratch restart demonstrably cannot get past.
+
 ## Phase 7 — Sensory Grounding: One Set of Eyes (ADR-004)
 
 *(Phase numbering is thematic, not strictly temporal — Phase 7 can begin when its

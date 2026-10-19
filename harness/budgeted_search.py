@@ -123,10 +123,15 @@ class QNetEvaluator:
     retraining.
     """
 
-    def __init__(self, q_function, n_actions: int, prior_temperature: float = 0.5):
+    def __init__(self, q_function, n_actions: int, prior_temperature: float = 0.5,
+                 uniform_priors: bool = False):
         self.q_function = q_function
         self._n_actions = n_actions
         self.prior_temperature = prior_temperature
+        # When set, the network's ranking of moves is not used to decide where
+        # to look — only its valuation of positions. Isolates the value of the
+        # ranking itself.
+        self.uniform_priors = uniform_priors
 
     @property
     def n_actions(self) -> int:
@@ -139,7 +144,9 @@ class QNetEvaluator:
         value = float(np.max(q[legal])) if legal else 0.0
         priors = np.zeros(self._n_actions, dtype=np.float64)
         if legal:
-            priors[legal] = _softmax(q[legal], self.prior_temperature)
+            priors[legal] = (np.full(len(legal), 1.0 / len(legal))
+                             if self.uniform_priors
+                             else _softmax(q[legal], self.prior_temperature))
         return NodeEval(value=value, priors=priors)
 
 
@@ -472,3 +479,65 @@ def budgeted_q(q_function, node_budget: int, n_actions: int = 7,
         PerfectConnect4Model(),
         cfg,
     )
+
+
+# ---------------------------------------------------------------------------
+# spending rules
+# ---------------------------------------------------------------------------
+#
+# Given an equal budget of states to examine, these are different rules for
+# deciding which states to spend it on. Because the budget is identical, the
+# rules are directly comparable, and which one learns fastest is a fair
+# question for an experiment.
+
+SPEND_RULES = ("puct", "ucb", "greedy", "uniform")
+
+
+def make_search(
+    q_function,
+    budget: int,
+    spend_rule: str = "puct",
+    n_actions: int = 7,
+    rows: int = 6,
+    cols: int = 7,
+    c_puct: float = 1.4,
+    prior_temperature: float = 0.5,
+    gamma: float = 0.99,
+    dirichlet_noise: float = 0.0,
+    seed: int = 0,
+    model_confidence_decay: float = 1.0,
+) -> BudgetedSearch:
+    """Build a budgeted search that spends its budget by a named rule.
+
+    puct    — follow the moves the network rates highly, with the pull of each
+              move fading as it is examined. Concentrates fastest when the
+              network has useful opinions.
+    ucb     — ignore the network's ranking when deciding where to look, and
+              choose by the best value found so far plus a bonus for the
+              less-examined. Tests whether the network's move ranking is worth
+              anything beyond its position values.
+    greedy  — always extend the line that currently looks best. Deepest reach,
+              and most easily fooled by one bad estimate.
+    uniform — spread the budget evenly, which is what a fixed-depth search
+              does. The control that isolates the value of choosing.
+    """
+    if spend_rule not in SPEND_RULES:
+        raise ValueError(f"spend_rule must be one of {SPEND_RULES}, got {spend_rule!r}")
+
+    exploration = {"puct": c_puct, "ucb": c_puct, "greedy": 0.0, "uniform": 50.0}[spend_rule]
+    cfg = SearchConfig(
+        node_budget=budget,
+        c_puct=exploration,
+        gamma=gamma,
+        prior_temperature=prior_temperature,
+        dirichlet_noise=dirichlet_noise,
+        seed=seed,
+        model_confidence_decay=model_confidence_decay,
+    )
+    evaluator = QNetEvaluator(
+        q_function, n_actions, prior_temperature,
+        # ucb and uniform deliberately discard the network's move ranking, so
+        # that what is being compared is the spending rule and not the prior.
+        uniform_priors=spend_rule in ("ucb", "uniform"),
+    )
+    return BudgetedSearch(evaluator, PerfectConnect4Model(rows, cols), cfg)

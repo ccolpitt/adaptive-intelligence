@@ -3,18 +3,14 @@
 Every experiment's hypothesis is written for a human reader, deciding whether to revisit it.
 No jargon soup. Follow this structure:
 
-## CONTEXT (the pre-sentence that sets the stage)
+## CONTEXT (the sentence that sets the stage)
 
-State, in plain sentences:
-- What are we trying to learn?  What's the task?
-- The mode of learning (e.g., self-play against a frozen champion) and training
-  volume (episodes).
-- How the board and player are represented (currently: AlphaZero-style two
-  planes, 6x7 each — plane 0 = pieces of the player about to move, plane 1 =
-  opponent's pieces; the board flips to the mover's perspective every move, so
-  no "whose turn" input exists).
+State, in plain english:
+- What's the task?  Are we playing connect 4?  Drawing pictures?  Chess?
+- The mode of learning (e.g., self-play against a frozen champion).  A supervised training set?
+- State representation.  How the board and player are represented.  For example, with Conenct 4, it is AlphaZero-style two planes, 6x7 each — plane 0 = pieces of the player about to move, plane 1 = opponent's pieces; the board flips to the mover's perspective every move, so no "whose turn" input exists).
 - What the policy currently is (architecture, learning algorithm).
-- Where the current champion stands on the yardstick.
+- Where the current champion stands on whatever yardstick we're using to measure.  Include a pointer to the yardstick, if it exists.
 
 ## HYPOTHESIS
 Every hypothesis has to be structured as follows, "If we make X change, then we will observe Y because of Z".  We don't even need to make hypotheses to improve the policy every time.  We could make hypotheses about the learning process itself, to help improve the policy down the line.
