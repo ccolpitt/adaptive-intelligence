@@ -67,6 +67,12 @@ class CycleLoopConfig:
     # cycle; eval_budget_decides selects which one the promotion gate uses.
     eval_budget: int = 0
     eval_budget_decides: bool = False
+    # Lookahead in the challenger-versus-champion match. Both sides get the
+    # SAME budget, which is what keeps the comparison about skill rather than
+    # compute (learning rule 4). Zero means both play immediately. This is
+    # sound for a two-player zero-sum game, where one policy's gain is the
+    # other's loss and an equal allowance is therefore a fair contest.
+    h2h_budget: int = 0
     # Resuming: a run that is interrupted can be continued, because cycle
     # records and the champion both live on disk. The weights of the policy
     # being trained are reloaded from the last challenger of the lineage.
@@ -415,7 +421,8 @@ def run_cycles(task: Task, store_root: Union[str, Path],
         # The replay buffer and exploration rate are not persisted, so a
         # resumed run restarts both. Recorded here because it makes a resumed
         # cycle slightly different from an uninterrupted one.
-        trainer.eps = max(trainer.cfg.eps_end, trainer.cfg.eps_start * 0.5)
+        if hasattr(trainer.cfg, "eps_start"):
+            trainer.eps = max(trainer.cfg.eps_end, trainer.cfg.eps_start * 0.5)
         lineages.record(lineage.lineage_id, "resumed", cycle=start_cycle,
                         from_policy=previous.challenger_id if previous else None,
                         note="replay buffer and exploration rate restart on resume")
@@ -468,7 +475,26 @@ def run_cycles(task: Task, store_root: Union[str, Path],
             bench_with_lookahead = task.benchmark.score(thinking_q)
 
         challenger_id = archive.next_policy_id(lineage.lineage_id)
-        h2h = evaluator.head_to_head(bare_q, champion_q, games=cfg.gate_games,
+
+        # The match against the champion. With a budget, BOTH sides get the
+        # same allowance, so what is being compared stays skill and not
+        # compute.
+        if cfg.h2h_budget > 0:
+            from .budgeted_search import make_search
+
+            challenger_player = make_search(
+                bare_q, budget=cfg.h2h_budget, spend_rule="puct",
+                n_actions=task.action_spec.n, rows=rows, cols=cols,
+                dirichlet_noise=0.0, seed=cfg.seed, select_by="visits")
+            champion_player = make_search(
+                champion_q, budget=cfg.h2h_budget, spend_rule="puct",
+                n_actions=task.action_spec.n, rows=rows, cols=cols,
+                dirichlet_noise=0.0, seed=cfg.seed + 1, select_by="visits")
+        else:
+            challenger_player, champion_player = bare_q, champion_q
+
+        h2h = evaluator.head_to_head(challenger_player, champion_player,
+                                     games=cfg.gate_games,
                                      label_a=challenger_id, label_b=champion_id,
                                      temperature=cfg.gate_temperature)
 
@@ -533,7 +559,12 @@ def run_cycles(task: Task, store_root: Union[str, Path],
             champion_module = trainer.scripted()
             champion_q = _q_of(champion_module)
             generation += 1
-            trainer.eps = min(trainer.cfg.eps_start, trainer.eps + 0.1)
+            # Re-explore against the new champion. Only the single-output
+            # learner has a random-move rate to raise; a two-headed policy
+            # explores through noise in its search and by sampling its move
+            # from the search's attention, so there is nothing to bump.
+            if hasattr(trainer.cfg, "eps_start"):
+                trainer.eps = min(trainer.cfg.eps_start, trainer.eps + 0.1)
         else:
             lineages.record(lineage.lineage_id, "rejected", policy_id=challenger_id,
                             cycle=cycle_index, score=bench.score,
@@ -565,7 +596,8 @@ def run_cycles(task: Task, store_root: Union[str, Path],
                             if bench_with_lookahead else None,
                         "deciding_score": deciding.score},
             head_to_head={"score": h2h.score, "games": h2h.games,
-                          "wins": h2h.wins, "losses": h2h.losses, "draws": h2h.draws},
+                          "wins": h2h.wins, "losses": h2h.losses,
+                          "draws": h2h.draws, "budget_each": cfg.h2h_budget},
             promoted=decision.promote, parity=decision.parity,
             gate_reason=decision.reason, probes=probes,
         )
@@ -579,6 +611,24 @@ def run_cycles(task: Task, store_root: Union[str, Path],
             record.diagnosis = [s.to_dict() for s in diagnose_card(card)] if card else []
         except Exception:
             record.diagnosis = []
+
+        # Ask whether the numbers make sense before accepting them.
+        try:
+            from .sanity import check_cycle, render as render_sanity, worst_severity
+
+            findings = check_cycle(record, produced or cycles_store.load_all(
+                lineage.lineage_id))
+            record.sanity = [f.to_dict() for f in findings]
+            if findings and cfg.verbose:
+                print(render_sanity(findings))
+            if worst_severity(findings) == "contradiction":
+                lineages.record(lineage.lineage_id, "contradiction_found",
+                                cycle=cycle_index,
+                                checks=[f.check for f in findings
+                                        if f.severity == "contradiction"])
+        except Exception as err:
+            record.sanity = [{"severity": "unexpected", "check": "sanity checking ran",
+                              "expected": "the checks run", "observed": repr(err)}]
 
         cycles_store.save(record)
         lineages.record(lineage.lineage_id, "cycle_completed", cycle=cycle_index,

@@ -57,3 +57,30 @@ clear 0.5 over 200 games (~5% false-promotion rate) and no statistically
 significant ladder regression. The 168-game ladder cannot distinguish gains
 under ~0.09 from noise: a positive-but-smaller gain is recorded INCONCLUSIVE,
 never refuted - the follow-up is more evaluation games, not abandonment."""
+
+
+def register_once(store, experiment_id: str, hypothesis: str, **kwargs):
+    """Register an experiment, or confirm it is already registered unchanged.
+
+    The registry refuses to re-register an experiment, which is right: a
+    hypothesis is recorded before the run and must not be edited afterwards.
+    But runs are now resumable, and resuming means running the same script
+    again — so a script that registers unconditionally cannot resume. This
+    registers the first time and, on later runs, checks that the hypothesis
+    on disk still matches the one in the script. If it has drifted, it stops:
+    continuing would attach results to a hypothesis that was not the one
+    being tested.
+    """
+    existing = store.experiments.get(experiment_id)
+    if existing is None:
+        return store.experiments.register(
+            experiment_id=experiment_id, hypothesis=hypothesis, **kwargs)
+    if existing.hypothesis.strip() != hypothesis.strip():
+        raise ValueError(
+            f"{experiment_id} is already registered with a DIFFERENT hypothesis. "
+            "Resuming would attach new results to a hypothesis that is not the "
+            "one on record. Either restore the original wording or use a new "
+            "experiment id."
+        )
+    print(f"[{experiment_id}] already registered; continuing the same experiment")
+    return existing

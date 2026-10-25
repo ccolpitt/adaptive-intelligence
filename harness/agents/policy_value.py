@@ -209,7 +209,8 @@ class PolicyValueTrainer:
                              c_puct=self.cfg.c_puct, gamma=self.cfg.gamma,
                              dirichlet_noise=self.cfg.dirichlet_noise,
                              dirichlet_alpha=self.cfg.dirichlet_alpha,
-                             seed=self.cfg.seed),
+                             seed=self.cfg.seed,
+                             select_by="visits"),
             )
         return self._search
 
@@ -258,9 +259,13 @@ class PolicyValueTrainer:
                 if temperature > 0 and visit_policy.sum() > 0:
                     action = int(self.rng.choice(len(visit_policy), p=visit_policy))
                     if action not in legal:  # numerical safety
-                        action = result.best_action
+                        action = result.best_action_by_visits
                 else:
-                    action = result.best_action
+                    # The most-attended move, as AlphaZero selects. Not the
+                    # highest backed-up value: a visit count reflects
+                    # sustained preference across the search, while a mean
+                    # can rest on one or two visits.
+                    action = result.best_action_by_visits
             else:
                 action = opponent_act(obs, legal)
 

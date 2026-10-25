@@ -203,6 +203,15 @@ class SearchConfig:
     dirichlet_noise: float = 0.0
     dirichlet_alpha: float = 1.0
     seed: int = 0
+    # Which statistic names the move once the search is done.
+    #   "visits" — the most-attended move, as AlphaZero does. Steadier,
+    #              because a move earns visits only by continuing to look
+    #              good as it is examined further.
+    #   "value"  — the highest backed-up value. Noisier at small budgets,
+    #              where a mean can rest on one or two visits.
+    # "value" is the default only because experiments already recorded used
+    # it; new work should set "visits".
+    select_by: str = "value"
 
 
 class _Node:
@@ -237,8 +246,28 @@ class SearchResult:
     nodes_evaluated: int  # UNIQUE positions examined — the budget consumed
     max_depth_reached: int
     tree_size: int
-    best_action: int
+    best_action: int  # by backed-up value
     cache_hits: int = 0  # repeats served without spending budget
+
+    @property
+    def best_action_by_visits(self) -> int:
+        """The move the search attended to most.
+
+        This is how AlphaZero picks its move — not the highest backed-up
+        value (Silver et al., 2017: the move is drawn from the visit counts,
+        with the temperature driven to zero at play time, which selects the
+        most-visited move). The value appears only inside the selection rule
+        while searching.
+
+        Visit count is the steadier statistic. A move accumulates visits only
+        by continuing to look good as it is examined more deeply, so it
+        reflects sustained preference. A backed-up mean can rest on very few
+        visits, or be carried by one fortunate deep line, and is therefore
+        far noisier at small budgets.
+        """
+        if self.visit_counts.sum() <= 0:
+            return self.best_action
+        return int(np.argmax(self.visit_counts))
 
     def visit_policy(self, temperature: float = 1.0) -> np.ndarray:
         """The search's move preference, as a distribution. This is the
@@ -282,7 +311,16 @@ class BudgetedSearch:
     # -- QFunction interface ------------------------------------------------
 
     def __call__(self, obs: np.ndarray) -> np.ndarray:
-        return self.run(obs).action_values
+        """Scores per move, so the search can stand in for a policy anywhere
+        a policy is expected. Under "visits" the scores are the visit counts,
+        so taking the largest selects the most-attended move; illegal moves
+        stay excluded."""
+        result = self.run(obs)
+        if self.cfg.select_by == "visits" and result.visit_counts.sum() > 0:
+            scores = result.visit_counts.astype(np.float64)
+            scores[result.action_values <= ILLEGAL / 2] = ILLEGAL
+            return scores
+        return result.action_values
 
     # -- main loop ----------------------------------------------------------
 
@@ -542,6 +580,7 @@ def make_search(
     dirichlet_noise: float = 0.0,
     seed: int = 0,
     model_confidence_decay: float = 1.0,
+    select_by: str = "value",
 ) -> BudgetedSearch:
     """Build a budgeted search that spends its budget by a named rule.
 
@@ -569,6 +608,7 @@ def make_search(
         dirichlet_noise=dirichlet_noise,
         seed=seed,
         model_confidence_decay=model_confidence_decay,
+        select_by=select_by,
     )
     evaluator = QNetEvaluator(
         q_function, n_actions, prior_temperature,

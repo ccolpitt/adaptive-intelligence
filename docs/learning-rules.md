@@ -195,6 +195,32 @@ runs, so the record and the way to read it always agree.
 
 **Status: in force.**
 
+## 11. A result that cannot be true stops interpretation
+
+Every cycle is checked against what the design requires, and findings are
+separated into three kinds (`harness/sanity.py`):
+
+- **contradiction** — cannot be true given how the system is built: a budget
+  of 32 positions that examined 400, a squashed value estimate above 1,
+  non-finite weights. This is always a defect in the harness or the learner,
+  never a weak policy.
+- **inconsistent** — two measurements disagree in a way that needs
+  explaining: thinking made the policy worse, a promotion lowered the
+  champion's score, positions proved lost rated above positions proved won.
+- **unexpected** — allowed, but not what the design predicts.
+
+**A contradiction halts interpretation of the whole cycle, not just the
+check that fired.** If one number cannot be true then something is measuring
+the wrong thing, and every other number in that cycle is suspect until it is
+explained. Five defects have reached a run so far and none of them crashed;
+each was found because a single impossible number was noticed by eye, late.
+See `docs/defect-retros.md`.
+
+Each check names the defect that motivated it and says where to look, so the
+set grows as the project learns what can go wrong.
+
+**Status: in force.**
+
 ## 10. Register the hypothesis before the run; record the verdict once
 
 Unchanged from the start of the project, and the reason the ledger is worth

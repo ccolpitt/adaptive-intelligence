@@ -69,6 +69,10 @@ class CycleRecord:
     # policy health probes taken at the end of the cycle
     probes: Dict = field(default_factory=dict)
     diagnosis: List[Dict] = field(default_factory=list)
+    # Expectations that did not hold. A "contradiction" here means a number
+    # in this cycle cannot be true given how the system is built, so every
+    # other number in the cycle is suspect until it is explained.
+    sanity: List[Dict] = field(default_factory=list)
 
     created_at: str = field(default_factory=now_iso)
 
@@ -100,6 +104,7 @@ class CycleRecord:
             "gate_reason": self.gate_reason,
             "probes": self.probes,
             "diagnosis": self.diagnosis,
+            "sanity": self.sanity,
             "created_at": self.created_at,
         }
 
