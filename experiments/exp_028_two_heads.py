@@ -36,7 +36,7 @@ EXPERIMENT_ID = "exp-028-two-heads"
 BUDGET = 200          # positions the search may examine per training move
 EVAL_BUDGET = 200     # and when the policy is scored with thinking allowed
 GAMES_PER_CYCLE = 200
-CYCLES = 160   # extended: the trend was still rising at 60 (see exp-028 verdict)
+CYCLES = 60
 
 
 def rubric_r005() -> TrainingRubric:
