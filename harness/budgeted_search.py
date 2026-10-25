@@ -234,10 +234,11 @@ class SearchResult:
     action_values: np.ndarray  # negamax value per action, ILLEGAL where unplayable
     visit_counts: np.ndarray  # how the budget was spent per root action
     root_value: float
-    nodes_evaluated: int  # budget actually consumed
+    nodes_evaluated: int  # UNIQUE positions examined — the budget consumed
     max_depth_reached: int
     tree_size: int
     best_action: int
+    cache_hits: int = 0  # repeats served without spending budget
 
     def visit_policy(self, temperature: float = 1.0) -> np.ndarray:
         """The search's move preference, as a distribution. This is the
@@ -274,6 +275,9 @@ class BudgetedSearch:
         self.total_nodes_evaluated = 0
         self.total_moves = 0
         self.deepest_reached = 0
+        self.total_cache_hits = 0
+        self._cache: Dict[bytes, NodeEval] = {}
+        self.cache_hits = 0
 
     # -- QFunction interface ------------------------------------------------
 
@@ -288,6 +292,15 @@ class BudgetedSearch:
         nodes_evaluated = 0
         max_depth = 0
         tree_size = 1
+
+        # Positions already looked at during THIS move. Two different move
+        # orders often reach the same position, and looking at it twice is
+        # both wasted compute and a budget charged twice for one position, so
+        # a repeat is served from here and costs nothing. The cache is
+        # discarded when the move is over, because the weights may change
+        # between moves and a stale opinion would then be worse than none.
+        self._cache: Dict[bytes, NodeEval] = {}
+        self.cache_hits = 0
 
         # First unit of budget: look at the position we are actually in.
         nodes_evaluated += self._expand(root)
@@ -342,14 +355,32 @@ class BudgetedSearch:
     # -- pieces -------------------------------------------------------------
 
     def _expand(self, node: _Node) -> int:
-        """Look at a position: ask the network, record priors. Returns the
-        budget consumed (1)."""
+        """Look at a position. Returns the budget consumed: 1 for a position
+        not yet seen this move, 0 for one already looked at (served from the
+        cache), so the budget counts UNIQUE positions examined."""
         node.legal = list(self.model.legal_actions(node.state))
-        ev = self.evaluator.evaluate(self.model.observation(node.state), node.legal)
+        observation = self.model.observation(node.state)
+        key = self._position_key(node.state, observation)
+        cached = self._cache.get(key)
+        if cached is not None:
+            self.cache_hits += 1
+            node.priors = cached.priors
+            node.value_sum = cached.value
+            node.expanded = True
+            return 0
+        ev = self.evaluator.evaluate(observation, node.legal)
+        self._cache[key] = ev
         node.priors = ev.priors
         node.value_sum = ev.value  # handed straight to the backup by the caller
         node.expanded = True
         return 1
+
+    @staticmethod
+    def _position_key(state, observation: np.ndarray) -> bytes:
+        """Identifies a position for caching. Uses the canonical observation,
+        which already encodes whose turn it is by whose pieces are in which
+        plane, so two states that look identical to the network share a key."""
+        return observation.tobytes()
 
     def _make_child(self, node: _Node, action: int) -> _Node:
         t = self.model.apply(node.state, action)
@@ -413,6 +444,10 @@ class BudgetedSearch:
         self.total_nodes_evaluated += nodes_evaluated
         self.total_moves += 1
         self.deepest_reached = max(self.deepest_reached, max_depth)
+        self.total_cache_hits += self.cache_hits
+        # The cache is per-move: discard it so the next move cannot act on an
+        # opinion formed by weights that have since changed.
+        self._cache = {}
         return SearchResult(
             action_values=action_values,
             visit_counts=visit_counts,
@@ -421,6 +456,7 @@ class BudgetedSearch:
             max_depth_reached=max_depth,
             tree_size=tree_size,
             best_action=best_action,
+            cache_hits=self.cache_hits,
         )
 
 

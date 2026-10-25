@@ -49,7 +49,7 @@ SPEND_RULES = (
     "uniform", # spread the budget evenly (equivalent to fixed-depth search)
 )
 
-LEARNERS = ("dqn", "double-dqn", "alphazero-lite")
+LEARNERS = ("dqn", "double-dqn", "alphazero-lite", "policy-value")
 
 # What the network is trained to reproduce.
 TARGET_KINDS = (

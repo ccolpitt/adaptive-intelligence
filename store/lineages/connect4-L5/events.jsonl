@@ -1,0 +1,1 @@
+{"at": "2026-10-25T04:13:32.168581+00:00", "kind": "created", "note": "Fifth line of Connect 4 policies, and the first with two heads: one proposing moves, one judging positions. Started fresh because the network has a different shape, so continuing from an earlier line'", "parent_lineage": "connect4-L4", "rubric_id": "r005-two-heads-200"}

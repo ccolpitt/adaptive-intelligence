@@ -27,7 +27,7 @@ from __future__ import annotations
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -78,10 +78,78 @@ class CycleLoopConfig:
 
 
 def _q_of(module: torch.jit.ScriptModule) -> QFunction:
+    """Move preference from a saved policy, whichever kind it is. A
+    single-headed policy returns one array; a two-headed one returns move
+    scores and a position value, and it is the move scores that choose."""
     def q(obs: np.ndarray) -> np.ndarray:
         with torch.no_grad():
-            return module(torch.from_numpy(obs).float().unsqueeze(0)).squeeze(0).numpy()
+            out = module(torch.from_numpy(obs).float().unsqueeze(0))
+            if isinstance(out, tuple):
+                out = out[0]
+            return out.squeeze(0).numpy()
     return q
+
+
+def _make_trainer(rubric: TrainingRubric, task: Task, seed: int, cfg):
+    """Build the learner the rubric names."""
+    rows, cols = task.obs_spec.shape[1], task.obs_spec.shape[2]
+    if rubric.learner == "policy-value":
+        from .agents.policy_value import PolicyValueConfig, PolicyValueTrainer
+
+        h = rubric.hyperparameters
+        pv = PolicyValueConfig(
+            seed=seed,
+            lr=h.get("lr", 1e-3),
+            weight_decay=h.get("weight_decay", 1e-4),
+            batch_size=h.get("batch_size", 128),
+            buffer_capacity=h.get("buffer_capacity", 100_000),
+            train_steps_per_game=h.get("train_steps_per_game", 4),
+            channels=h.get("channels", 64),
+            hidden=h.get("hidden", 128),
+            conv_layers=h.get("conv_layers", 3),
+            search_budget=rubric.search_budget,
+            spend_rule=rubric.spend_rule,
+            c_puct=h.get("c_puct", 1.4),
+            gamma=h.get("gamma", 0.99),
+            dirichlet_noise=h.get("dirichlet_noise", 0.25),
+            sampling_moves=h.get("sampling_moves", 12),
+            value_loss_weight=h.get("value_loss_weight", 1.0),
+            mirror_augmentation=h.get("mirror_augmentation", True),
+        )
+        return PolicyValueTrainer(rows, cols, task.action_spec.n, pv), "policy-value"
+
+    trainer_cfg = trainer_config_from_rubric(
+        rubric, seed, store_opponent_transitions=cfg.store_opponent_transitions)
+    return DQNTrainer(rows, cols, task.action_spec.n, trainer_cfg), "dqn"
+
+
+def _play_one(trainer, kind: str, env, champion_q, opponent_act):
+    """Play one training game and return per-game numbers in one shape,
+    whichever learner produced them."""
+    if kind == "policy-value":
+        # A two-headed policy learns from its own search, so it plays itself
+        # unless a fixed opponent is named.
+        stats = trainer.play_game(env, opponent_act=opponent_act)
+        loss = float(np.mean(stats.total_losses)) if stats.total_losses else None
+        return {
+            "loss": loss,
+            "policy_loss": float(np.mean(stats.policy_losses)) if stats.policy_losses else None,
+            "value_loss": float(np.mean(stats.value_losses)) if stats.value_losses else None,
+            "grad_norm": float(np.mean(stats.grad_norms)) if stats.grad_norms else None,
+            "q_mean_abs": float(np.mean(stats.value_abs_means)) if stats.value_abs_means else None,
+            "result": stats.learner_result,
+            "search_states": stats.search_states,
+        }
+    stats = trainer.play_episode(env, opponent_q=champion_q, opponent_act=opponent_act)
+    return {
+        "loss": float(np.mean(stats.losses)) if stats.losses else None,
+        "policy_loss": None,
+        "value_loss": None,
+        "grad_norm": float(np.mean(stats.grad_norms)) if stats.grad_norms else None,
+        "q_mean_abs": float(np.mean(stats.q_abs_means)) if stats.q_abs_means else None,
+        "result": stats.learner_result,
+        "search_states": None,
+    }
 
 
 def trainer_config_from_rubric(rubric: TrainingRubric, seed: int,
@@ -170,7 +238,8 @@ def win_rate_vs_random(task: Task, q_function: QFunction, games: int = 100,
 
 
 def probe_policy(task: Task, q_function: QFunction, module: torch.nn.Module,
-                 games: int = 30, seed: int = 0) -> Dict:
+                 games: int = 30, seed: int = 0,
+                 value_function: Optional[Callable] = None) -> Dict:
     """Does the policy value positions correctly, and is the network healthy?
     Reuses the established probes and flattens them into plain numbers for
     the cycle record."""
@@ -186,9 +255,36 @@ def probe_policy(task: Task, q_function: QFunction, module: torch.nn.Module,
         probes["take_the_win_rate"] = harvest.offense_taken / harvest.offense_n
     if harvest.defense_n:
         probes["block_the_loss_rate"] = harvest.defense_blocked / harvest.defense_n
-    probes["q_mean_abs"] = float(harvest.q_mean_abs)
-    probes["q_max_abs"] = float(harvest.q_max_abs)
     probes["unique_states_in_probe"] = harvest.unique_states
+
+    if value_function is None:
+        # One set of outputs doing both jobs: its magnitudes ARE value
+        # estimates, so they belong in the reward range.
+        probes["q_mean_abs"] = float(harvest.q_mean_abs)
+        probes["q_max_abs"] = float(harvest.q_max_abs)
+    else:
+        # A two-headed policy. The move head's numbers are scores that become
+        # probabilities, so they are not values and are not confined to the
+        # reward range — a large one simply means a strong preference.
+        # Checking them against ±1 would be a category error, so the value
+        # range is checked on the head that actually estimates value.
+        probes["move_score_mean_abs"] = float(harvest.q_mean_abs)
+        probes["move_score_max_abs"] = float(harvest.q_max_abs)
+        values = []
+        for g in range(max(4, games // 4)):
+            env = task.make_env()
+            obs = env.reset()
+            rng = np.random.default_rng(seed + 500 + g)
+            while True:
+                values.append(abs(float(value_function(obs))))
+                legal = env.legal_actions()
+                step = env.step(int(rng.choice(legal)))
+                if step.done:
+                    break
+                obs = step.next_obs
+        if values:
+            probes["q_mean_abs"] = float(np.mean(values))
+            probes["q_max_abs"] = float(np.max(values))
 
     for reading in solver_calibration_readings(task, q_function,
                                                games=max(4, games // 4), seed=seed):
@@ -241,12 +337,9 @@ def run_cycles(task: Task, store_root: Union[str, Path],
 
     renderer = cfg.renderer or latest_for(lineage.task_id)
     seed_everything(cfg.seed)
-    trainer_cfg = trainer_config_from_rubric(
-        rubric, cfg.seed,
-        store_opponent_transitions=cfg.store_opponent_transitions,
-    )
     rows, cols = task.obs_spec.shape[1], task.obs_spec.shape[2]
-    trainer = DQNTrainer(rows, cols, task.action_spec.n, trainer_cfg)
+    trainer, learner_kind = _make_trainer(rubric, task, cfg.seed, cfg)
+    trainer_cfg = trainer.cfg
     parameter_count = sum(p.numel() for p in trainer.net.parameters())
     evaluator = Evaluator(task, seed=cfg.seed)
     gate = GATE_RULES[cfg.gate_rule]
@@ -338,25 +431,23 @@ def run_cycles(task: Task, store_root: Union[str, Path],
 
         for game in range(cfg.games_per_cycle):
             env = task.make_env()
+            opponent_act = None
             if diverse is not None and game % 4 == 1:
-                stats = trainer.play_episode(env, opponent_q=None,
-                                             opponent_act=diverse["tactic"].act)
+                opponent_act = diverse["tactic"].act
             elif diverse is not None and game % 4 == 3:
-                stats = trainer.play_episode(env, opponent_q=None,
-                                             opponent_act=diverse["random"].act)
-            else:
-                stats = trainer.play_episode(env, opponent_q=champion_q)
-            series["loss"].append(float(np.mean(stats.losses)) if stats.losses else None)
-            series["grad_norm"].append(
-                float(np.mean(stats.grad_norms)) if stats.grad_norms else None)
-            series["q_mean_abs"].append(
-                float(np.mean(stats.q_abs_means)) if stats.q_abs_means else None)
-            series["result"].append(stats.learner_result)
+                opponent_act = diverse["random"].act
+            measured = _play_one(trainer, learner_kind, env, champion_q, opponent_act)
+            for key in ("loss", "grad_norm", "q_mean_abs", "result"):
+                series[key].append(measured[key])
+            for key in ("policy_loss", "value_loss"):
+                if measured[key] is not None:
+                    series.setdefault(key, []).append(measured[key])
             series["unique_states"].append(len(trainer.unique_states_seen))
-            series["epsilon"].append(round(trainer.eps, 5))
+            series["epsilon"].append(round(getattr(trainer, "eps", 0.0), 5))
             spent = trainer.search_states_examined - states_before
             states_before = trainer.search_states_examined
-            series["search_states"].append(spent if trainer.cfg.search_budget else None)
+            series["search_states"].append(
+                spent if trainer.cfg.search_budget else None)
 
         # Measurement. The policy alone first, which is the definition every
         # score in the project's history was produced under.
@@ -423,8 +514,11 @@ def run_cycles(task: Task, store_root: Union[str, Path],
                         cycle=cycle_index, generation=generation + 1,
                         score=bench.score)
 
-        probes = probe_policy(task, bare_q, trainer.net, games=cfg.probe_games,
-                              seed=cfg.seed)
+        probes = probe_policy(
+            task, bare_q, trainer.net, games=cfg.probe_games, seed=cfg.seed,
+            value_function=(trainer.value_function()
+                            if learner_kind == "policy-value" else None),
+        )
         # A policy with a broken apparatus must not become the thing every
         # later challenger is measured against, however it scored.
         decision = apply_health_gate(decision, probes)

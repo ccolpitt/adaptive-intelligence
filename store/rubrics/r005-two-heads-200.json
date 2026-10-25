@@ -1,0 +1,32 @@
+{
+  "rubric_id": "r005-two-heads-200",
+  "name": "Two heads, search of 200 positions per move",
+  "description": "The policy has two outputs. A move head gives a probability for each column, saying which moves are worth considering. A value head gives one number for the position, from the point of view of whoever moves next, squashed into the range the rewards span so it cannot drift outside it. Neither is the value of a particular move: that comes from the search, which tries moves and backs up what it finds. Before each training move the search examines up to 200 distinct positions, using the move head to decide where to look and the value head to judge what it finds. The move actually played is sampled from where the search spent its attention for the first twelve moves of a game and taken greedily afterwards. The move head is then trained toward that same distribution of attention, and the value head toward how the game actually finished. Scoring the policy uses the move head alone, with no search.",
+  "learner": "policy-value",
+  "search_budget": 200,
+  "spend_rule": "puct",
+  "target_kind": "search-visits",
+  "bounded_targets": true,
+  "hyperparameters": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "gamma": 0.99,
+    "batch_size": 128,
+    "train_steps_per_game": 4,
+    "buffer_capacity": 100000,
+    "channels": 64,
+    "hidden": 128,
+    "conv_layers": 3,
+    "c_puct": 1.4,
+    "dirichlet_noise": 0.25,
+    "sampling_moves": 12,
+    "value_loss_weight": 1.0,
+    "mirror_augmentation": true
+  },
+  "data_rules": {
+    "self_play": true,
+    "note": "the policy plays itself; both sides' positions are recorded, since in self-play both sides are the same policy and both searches are informative. No hand-written opponent and no hand-written reward shaping are used, so nothing in this recipe depends on knowing what a good Connect 4 move is."
+  },
+  "notes": "The structure AlphaZero used (Silver et al., 2017). Adopted here because three lineages of a single-headed policy separated value judgement from move choice in measurement but could not join them in training.",
+  "created_at": "2026-10-25T04:01:45.093705+00:00"
+}

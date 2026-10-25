@@ -1,0 +1,10 @@
+{
+  "lineage_id": "connect4-L5",
+  "task_id": "connect4",
+  "rubric_id": "r005-two-heads-200",
+  "description": "Fifth line of Connect 4 policies, and the first with two heads: one proposing moves, one judging positions. Started fresh because the network has a different shape, so continuing from an earlier line's weights is not possible.",
+  "task_evaluation_version": 1,
+  "parent_lineage": "connect4-L4",
+  "restarted_from_scratch": true,
+  "created_at": "2026-10-25T04:13:32.168331+00:00"
+}
