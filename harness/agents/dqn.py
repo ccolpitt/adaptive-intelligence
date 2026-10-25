@@ -63,8 +63,10 @@ class QNet(nn.Module):
         channels: int = 32,
         hidden: int = 128,
         conv_layers: int = 2,
+        bounded_output: bool = False,
     ):
         super().__init__()
+        self.bounded_output = bounded_output
         layers: list = []
         in_ch = 2
         for _ in range(conv_layers):
@@ -83,7 +85,17 @@ class QNet(nn.Module):
         h = self.conv(x)
         h = h.flatten(1)
         h = self.act(self.fc1(h))
-        return self.out(h)
+        out = self.out(h)
+        if self.bounded_output:
+            # Rewards are +-1 and future value is discounted, so no position
+            # can truly be worth more than 1. Squashing the output enforces
+            # that instead of hoping training discovers it: exp-022 and
+            # exp-024 both drifted past the reward range, and once estimates
+            # exceed 1 a merely good move can outrank a winning one, because
+            # a winning move's target is exactly 1 while an inflated estimate
+            # is not bounded at all.
+            out = torch.tanh(out)
+        return out
 
 
 # transition: (obs, action, reward, next_obs, next_legal_mask, done)
@@ -211,6 +223,11 @@ class TrainerConfig:
     # failed because unbounded search-derived targets inflated the value scale
     # until a good move outranked a winning one; this is that fix.
     bounded_targets: bool = False
+    # Squash the network's OUTPUT into [-1, 1] with tanh. Clamping targets
+    # alone proved insufficient (exp-024): the targets were bounded but the
+    # network extrapolated past them anyway, reaching 1.93. Bounding the
+    # output makes the range a property of the architecture.
+    bounded_output: bool = False
 
 
 @dataclass
@@ -232,8 +249,10 @@ class DQNTrainer:
         self.cfg = config
         self.rows, self.cols, self.n_actions = rows, cols, n_actions
         seed_everything(config.seed)
-        self.net = QNet(rows, cols, n_actions, config.channels, config.hidden, config.conv_layers)
-        self.target = QNet(rows, cols, n_actions, config.channels, config.hidden, config.conv_layers)
+        self.net = QNet(rows, cols, n_actions, config.channels, config.hidden,
+                        config.conv_layers, config.bounded_output)
+        self.target = QNet(rows, cols, n_actions, config.channels, config.hidden,
+                           config.conv_layers, config.bounded_output)
         self.target.load_state_dict(self.net.state_dict())
         self.target.eval()
         self.optimizer = torch.optim.Adam(
@@ -546,6 +565,7 @@ class DQNTrainer:
         cpu_net = QNet(
             self.rows, self.cols, self.n_actions,
             self.cfg.channels, self.cfg.hidden, self.cfg.conv_layers,
+            self.cfg.bounded_output,
         )
         cpu_net.load_state_dict({k: v.cpu() for k, v in self.net.state_dict().items()})
         cpu_net.eval()

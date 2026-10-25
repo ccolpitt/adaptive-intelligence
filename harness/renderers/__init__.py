@@ -15,14 +15,15 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from . import connect4_v1
+from . import connect4_v1, connect4_v2
 
 _RENDERERS: Dict[str, object] = {
     "connect4_v1": connect4_v1,
+    "connect4_v2": connect4_v2,  # adds win rate against a random opponent
 }
 
 LATEST: Dict[str, str] = {
-    "connect4": "connect4_v1",
+    "connect4": "connect4_v2",
 }
 
 

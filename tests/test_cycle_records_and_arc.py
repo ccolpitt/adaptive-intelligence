@@ -97,12 +97,32 @@ def test_summary_line_is_readable():
 
 
 def test_renderer_registry():
+    # Older versions stay available forever, because records name them.
     assert "connect4_v1" in available()
-    assert latest_for("connect4") == "connect4_v1"
+    # The latest moves on as new measurements are added.
+    assert latest_for("connect4") in available()
+    assert latest_for("connect4") >= "connect4_v1"
     with pytest.raises(ValueError, match="no renderer registered"):
         latest_for("chess")
     with pytest.raises(ValueError, match="unknown renderer"):
         get_renderer("connect4_v99")
+
+
+def test_newer_renderer_adds_measurements_without_changing_the_old_one():
+    """The versioning contract: v2 declares what it added, and v1 is
+    unchanged so cycles recorded under it still draw as intended."""
+    v1 = get_renderer("connect4_v1").describe()
+    v2 = get_renderer("connect4_v2").describe()
+    assert v1["panels"][4] == "win rate in training games"
+    assert "random" in v2["panels"][4]
+    assert v2["new_since_v1"]
+    assert "win_rate_vs_random" in v2["expected_evaluation"]
+
+
+def test_a_v1_record_still_renders_after_v2_exists(tmp_path):
+    pytest.importorskip("matplotlib")
+    out = make_record(cycle=2, renderer="connect4_v1").render(out_dir=tmp_path)
+    assert out.endswith("cycle-0002.png")
 
 
 def test_renderer_declares_what_it_measures():

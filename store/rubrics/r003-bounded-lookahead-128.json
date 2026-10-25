@@ -1,0 +1,36 @@
+{
+  "rubric_id": "r003-bounded-lookahead-128",
+  "name": "Bounded value estimates, lookahead of 128 states per move",
+  "description": "As r002 \u2014 before each training move the policy may examine up to 128 states, choosing them with its own value estimates, then plays what the lookahead favours and is trained to rate that move as the lookahead valued it \u2014 with one architectural change: the network's output is squashed so that no estimate can leave the range the rewards span. Rewards are +1 and -1 and future value is discounted, so no position can truly be worth more than 1; clamping the targets alone did not prevent the network extrapolating past that range in exp-024, and once estimates exceed 1, a merely good move can outrank a winning one, whose target is exactly 1.",
+  "learner": "dqn",
+  "search_budget": 128,
+  "spend_rule": "puct",
+  "target_kind": "search-value",
+  "bounded_targets": true,
+  "hyperparameters": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "gamma": 0.99,
+    "batch_size": 64,
+    "train_steps_per_episode": 2,
+    "target_update_every": 50,
+    "eps_start": 0.5,
+    "eps_end": 0.1,
+    "eps_decay": 0.999,
+    "channels": 32,
+    "hidden": 128,
+    "conv_layers": 2,
+    "c_puct": 1.4,
+    "prior_temperature": 0.5,
+    "bounded_output": true
+  },
+  "data_rules": {
+    "tactical_shaping": false,
+    "store_opponent_transitions": true,
+    "diverse_opponents": true,
+    "buffer_capacity": 50000,
+    "note": "as r002; the change is the bounded output, not the data"
+  },
+  "notes": "Second attempt at putting lookahead into training. The first (exp-024, rubric r002) produced a value function that read proven-won positions at +0.93 and proven-lost at -0.83, so the mechanism was partly working; what failed was move preference, which is what an unbounded value scale destroys.",
+  "created_at": "2026-10-25T00:12:50.332211+00:00"
+}

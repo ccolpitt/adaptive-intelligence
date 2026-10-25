@@ -59,6 +59,9 @@ def main() -> None:
     p_playp.add_argument("--store", default="store")
     p_playp.add_argument("--policy", default=None, help="policy id (default: current champion)")
     p_playp.add_argument("--first", choices=["human", "policy"], default="human")
+    p_playp.add_argument("--lookahead", type=int, default=0,
+                         help="states the policy may examine per move "
+                              "(0 = how it is scored; try 200 for a real fight)")
 
     p_exp = sub.add_parser("exp-card", help="visual experiment card (hypothesis, setup, result curves)")
     p_exp.add_argument("--store", default="store")
@@ -122,7 +125,8 @@ def main() -> None:
     elif args.command == "play":
         from .interactive_play import play_policy
 
-        play_policy(store, args.policy, human_first=args.first == "human")
+        play_policy(store, args.policy, human_first=args.first == "human",
+                    lookahead=args.lookahead)
     elif args.command == "report":
         print(narrative(store, args.policy))
     elif args.command == "card":

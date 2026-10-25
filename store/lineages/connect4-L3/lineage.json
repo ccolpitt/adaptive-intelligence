@@ -1,0 +1,10 @@
+{
+  "lineage_id": "connect4-L3",
+  "task_id": "connect4",
+  "rubric_id": "r003-bounded-lookahead-128",
+  "description": "Third line of Connect 4 policies. Lookahead during training at 128 states per move, and value estimates bounded by the architecture so they cannot leave the range the rewards span. Started fresh because the change is architectural: a bounded network and an unbounded one are not the same network, so continuing from the second line's weights would confound the two.",
+  "task_evaluation_version": 1,
+  "parent_lineage": "connect4-L2",
+  "restarted_from_scratch": true,
+  "created_at": "2026-10-25T00:12:50.332380+00:00"
+}

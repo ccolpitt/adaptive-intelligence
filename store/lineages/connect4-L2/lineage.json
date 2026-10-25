@@ -1,0 +1,10 @@
+{
+  "lineage_id": "connect4-L2",
+  "task_id": "connect4",
+  "rubric_id": "r002-lookahead-32-puct",
+  "description": "Second line of Connect 4 policies. Starts from a randomly initialised network and is allowed to look ahead while training, which the first line never was. Begun because the first line reached 0.116 out of 1.0 across 36 experiments and could not climb further: it had no mechanism that made each generation's training data better than the network producing it.",
+  "task_evaluation_version": 1,
+  "parent_lineage": "connect4",
+  "restarted_from_scratch": true,
+  "created_at": "2026-10-19T03:46:04.920111+00:00"
+}

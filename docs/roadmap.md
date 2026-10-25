@@ -581,15 +581,51 @@ already slated for in Phase 3b.
 
 **8c — Make plasticity selective rather than global.** Today every weight is
 equally free to change at every moment, which is why learning something new
-endangers something old. Two candidate mechanisms:
-- reduce the plasticity of the parts of the network that have mastered
-  something, so mastery is protected rather than merely hoped for (the
-  importance-weighted-stiffness idea behind elastic weight consolidation,
-  Kirkpatrick et al. 2017);
-- localise plasticity by task similarity, so a task close to one already
-  learned adapts the same region, while an unrelated task is pushed into
-  fresh capacity — which would also give a measurable definition of "these
-  two tasks are related", currently an informal notion in Phase 2.
+endangers something old. Required capabilities, each a candidate hypothesis:
+
+- **Measure which parts of the network respond to which task.** The
+  prerequisite for everything else in this section: record, per task, which
+  units activate strongly and which weights receive large updates. Without
+  this, "the part that handles task A" is a figure of speech. It also yields
+  a *measurable* definition of task similarity — two tasks are related to the
+  degree they engage the same units — which replaces the informal notion used
+  in Phase 2.
+- **Reduce plasticity where a task has been mastered.** Make the weights that
+  matter most to a mastered task resist change, in proportion to how much
+  they matter, so competence is protected rather than merely hoped for
+  (the importance-weighted-stiffness idea behind elastic weight
+  consolidation, Kirkpatrick et al. 2017).
+- **Freeze outright what has been mastered AND generalises.** A region that
+  carries competence across several tasks is infrastructure, not a draft:
+  once its contribution is established on more than one task, stop letting
+  later training disturb it. The freeze must be revocable and recorded, and
+  its cost measured — a frozen region cannot adapt, so this trades future
+  flexibility for present safety and the trade needs a number on it.
+- **Restart what has gone dormant.** Units that no longer respond to anything
+  are wasted capacity. Detect them (the project already measures dead-weight
+  fractions per layer every cycle) and reinitialise them, returning capacity
+  to use without disturbing what the rest of the network knows
+  (continual backpropagation; Dohare et al., *Nature* 2024).
+- **Increase plasticity where a new task needs room.** The converse: when a
+  task engages a region that is already stiff with other competence, push it
+  into fresh or dormant capacity instead of overwriting.
+
+**8d — Tasks must ladder, and the curriculum must review.** Learning task B
+after task A overwrites the weights that encoded A unless A keeps being
+practised. This phase has to design the ladder, not discover it by accident:
+
+- each new task is chosen to build on competence the previous ones
+  established, so the ladder has rungs rather than gaps;
+- training on a new task **continues to review earlier ones**, with the
+  review fraction an explicit, recorded parameter — and the first experiment
+  is simply how much review is enough;
+- retention is measured, not assumed: every earlier task is re-scored on its
+  own frozen evaluation definition after later training, which is what makes
+  forgetting visible as a number;
+- review may eventually be of imagined rather than replayed experience
+  (working hypothesis (h)), and the review schedule may eventually be chosen
+  by the policy rather than set by hand (the same absorption as the scheduler
+  in Phase 3b).
 
 **Why this is deferred rather than queued:** every direction here is about
 *continuing* well, and we do not yet have a policy worth continuing from —

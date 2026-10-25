@@ -88,22 +88,54 @@ def play_solver(depth: int = 8, human_first: bool = True) -> None:
         print(f"Solver wins (depth {depth}).")
 
 
-def _policy_move(module: torch.nn.Module, obs: np.ndarray, env: Connect4Env) -> int:
-    """Greedy move from the policy's Q values, with its beliefs printed."""
+def _policy_move(module: torch.nn.Module, obs: np.ndarray, env: Connect4Env,
+                 lookahead: int = 0) -> int:
+    """The policy's move, with its reasoning printed.
+
+    With ``lookahead`` set, the policy may examine that many states before
+    committing — the same budgeted search used in training. The printed values
+    are then what the search concluded rather than the network's first
+    impression, and the two can differ sharply.
+    """
     legal = env.legal_actions()
-    with torch.no_grad():
-        q = module(torch.from_numpy(obs).float().unsqueeze(0)).squeeze(0).numpy()
-    ranked = sorted(legal, key=lambda c: -q[c])
-    print("policy Q values (its belief per column, best first):")
-    for c in ranked:
-        print(f"  col {c}: {q[c]:+.3f}")
-    choice = int(ranked[0])
+
+    def bare_q(o):
+        with torch.no_grad():
+            return module(torch.from_numpy(o).float().unsqueeze(0)).squeeze(0).numpy()
+
+    if lookahead > 0:
+        from .budgeted_search import make_search
+
+        search = make_search(bare_q, budget=lookahead, spend_rule="puct",
+                             rows=env.rows, cols=env.cols, dirichlet_noise=0.0)
+        result = search.run(obs)
+        values, visits = result.action_values, result.visit_counts
+        ranked = sorted(legal, key=lambda c: -values[c])
+        print(f"policy thinking with {lookahead} states "
+              f"(examined {result.nodes_evaluated}, looked {result.max_depth_reached} "
+              f"moves ahead):")
+        for c in ranked:
+            print(f"  col {c}: {values[c]:+.3f}   (spent {visits[c]} states here)")
+        choice = int(ranked[0])
+    else:
+        q = bare_q(obs)
+        ranked = sorted(legal, key=lambda c: -q[c])
+        print("policy values, no thinking ahead (best first):")
+        for c in ranked:
+            print(f"  col {c}: {q[c]:+.3f}")
+        choice = int(ranked[0])
     print(f"policy plays column {choice}")
     return choice
 
 
-def play_policy(store, policy_id: Optional[str] = None, human_first: bool = True) -> None:
-    """Play against an archived policy (default: the current champion)."""
+def play_policy(store, policy_id: Optional[str] = None, human_first: bool = True,
+                lookahead: int = 0) -> None:
+    """Play against an archived policy (default: the current champion).
+
+    ``lookahead`` is how many states the policy may examine per move. Zero is
+    how it is scored; a few hundred makes it markedly stronger, and playing
+    both is the quickest way to feel the difference search makes.
+    """
     if policy_id is None:
         policy_id = store.archive.current_champion("connect4")
         if policy_id is None:
@@ -123,6 +155,7 @@ def play_policy(store, policy_id: Optional[str] = None, human_first: bool = True
     obs = env.reset()
     human_player = 1 if human_first else -1
     print(f"You are {'X (first)' if human_first else 'O (second)'}. "
+          f"Opponent lookahead: {lookahead if lookahead else 'none (as scored)'}. "
           f"Columns 0-6, 'q' = quit.")
     _print_board(env)
 
@@ -141,7 +174,7 @@ def play_policy(store, policy_id: Optional[str] = None, human_first: bool = True
                 print(f"  {err}")
                 continue
         else:
-            result = env.step(_policy_move(module, obs, env))
+            result = env.step(_policy_move(module, obs, env, lookahead))
         obs = result.next_obs
         _print_board(env)
 

@@ -631,7 +631,8 @@ def solver_calibration_readings(
 
     rng.shuffle(positions)
     solver = Connect4Solver(max_depth=solver_depth)
-    won_qs, lost_qs = [], []
+    won_best, lost_best, lost_mean = [], [], []
+    spread = []  # how noisy the network's values are, needed to read the above
     evaluated = 0
     for board, mover, obs in positions:
         if evaluated >= max_positions:
@@ -641,31 +642,65 @@ def solver_calibration_readings(
             continue
         evaluated += 1
         q = np.asarray(q_function(obs), dtype=np.float64)
-        best_q = float(np.max([q[e.col] for e in evals]))
+        move_values = [q[e.col] for e in evals]
+        spread.append(float(np.std(move_values)))
         if any(e.exact and e.score > HEURISTIC_CAP for e in evals):
-            won_qs.append(best_q)  # forced win exists -> best Q should -> +1
+            won_best.append(float(np.max(move_values)))
         elif all(e.exact and e.score < -HEURISTIC_CAP for e in evals):
-            lost_qs.append(best_q)  # every move loses -> best Q should -> -1
+            lost_best.append(float(np.max(move_values)))
+            lost_mean.append(float(np.mean(move_values)))
 
     out: List[Reading] = []
-    if won_qs:
-        v = float(np.mean(won_qs))
+    noise = float(np.mean(spread)) if spread else 0.0
+    # Taking the best of k noisy estimates is positive even when every
+    # estimate is centred on zero, so a "best available value" reading on an
+    # untrained network reads high for a reason that has nothing to do with
+    # what it believes. For seven options the expected size of that artefact
+    # is about 1.35 standard deviations; anything within two standard
+    # deviations of the network's own spread is indistinguishable from it and
+    # therefore says nothing about belief either way.
+    max_of_noise_bias = 2.0 * noise
+
+    if won_best:
+        v = float(np.mean(won_best))
         out.append(Reading(
             name="q_at_solver_proven_wins",
             value=v,
             status=_band_high(v, Bands.WIN_MOVE_Q_OK, Bands.WIN_MOVE_Q_WARN),
             expectation="-> +1: the solver proves a forced win exists from here",
-            detail={"n": len(won_qs), "solver_depth": solver_depth},
+            detail={"n": len(won_best), "solver_depth": solver_depth},
         ))
-    if lost_qs:
-        v = float(np.mean(lost_qs))
+    if lost_best:
+        v = float(np.mean(lost_best))
+        explained_by_noise = v <= max_of_noise_bias
         out.append(Reading(
             name="q_at_solver_proven_losses",
             value=v,
-            status=OK if v <= -Bands.WIN_MOVE_Q_OK else (WARN if v <= 0.0 else FAIL),
+            status=(OK if v <= -Bands.WIN_MOVE_Q_OK
+                    else (INFO if (v > 0 and explained_by_noise)
+                          else (WARN if v <= 0.0 else FAIL))),
             expectation="-> -1: the solver proves EVERY move loses from here — "
                         "a calibrated value function knows when it is beaten",
-            detail={"n": len(lost_qs), "solver_depth": solver_depth},
+            note=("a positive reading here is within the range produced by taking "
+                  f"the best of several noisy estimates (the network's own spread "
+                  f"puts that artefact at up to {max_of_noise_bias:+.2f}) — it is "
+                  "weak evidence about belief, not a sign error; read "
+                  "q_at_solver_proven_losses_mean instead"
+                  if (v > 0 and explained_by_noise) else ""),
+            detail={"n": len(lost_best), "solver_depth": solver_depth,
+                    "value_noise": round(noise, 4),
+                    "max_of_noise_artefact": round(max_of_noise_bias, 4)},
+        ))
+        mv = float(np.mean(lost_mean))
+        out.append(Reading(
+            name="q_at_solver_proven_losses_mean",
+            value=mv,
+            status=OK if mv < 0 else (WARN if mv <= max_of_noise_bias else FAIL),
+            expectation="< 0: averaged over every move, a proven-lost position "
+                        "should look bad. Unlike the best-move reading above this "
+                        "is not inflated by taking a maximum, so it is the better "
+                        "measure of what the network actually believes",
+            detail={"n": len(lost_mean)},
         ))
     if not out:
         out.append(Reading(

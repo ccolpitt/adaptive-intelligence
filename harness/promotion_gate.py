@@ -269,3 +269,108 @@ GATE_RULES = {
     "either": statistical_either_gate,   # ADR-005: either axis wins, other must not regress
     "strict": statistical_strict_gate,   # ADR-007: must win BOTH axes
 }
+
+
+# ---------------------------------------------------------------------------
+# health conditions on promotion
+# ---------------------------------------------------------------------------
+#
+# The two score gates ask "is it better?". They cannot see a policy that is
+# scoring adequately while something underneath is plainly broken — value
+# estimates escaping the range the rewards span, weights going non-finite, a
+# network going silent. Those are not matters of taste: a policy with
+# non-finite weights is not a better policy that happens to look odd, it is
+# damaged, and promoting it makes it the thing every later challenger is
+# measured against.
+#
+# Deliberately narrow. These are failures of the apparatus, not shortfalls of
+# skill. Weak tactics are a shortfall of skill and must NOT block promotion:
+# a policy that improves from terrible to poor is still an improvement, and
+# the score gates already price it. Blocking on skill shortfalls would freeze
+# a lineage at its starting point.
+
+
+@dataclass(frozen=True)
+class HealthVerdict:
+    healthy: bool
+    blocking: list
+    warnings: list
+
+    @property
+    def reason(self) -> str:
+        if self.healthy:
+            return "no disqualifying faults" + (
+                f" (warnings: {'; '.join(self.warnings)})" if self.warnings else "")
+        return "DISQUALIFIED: " + "; ".join(self.blocking)
+
+
+def check_health(probes: dict,
+                 q_max_abs_limit: float = 3.0,
+                 dead_fraction_limit: float = 0.80) -> HealthVerdict:
+    """Decide whether a policy is sound enough to become the champion.
+
+    Blocking faults (the apparatus is broken):
+      - any non-finite weight;
+      - value estimates far outside the range rewards span, which means the
+        value recursion is diverging (exp-022's failure);
+      - a layer almost entirely silent, which means capacity has collapsed.
+
+    Warnings (recorded, not blocking): mild scale drift, and poor tactics.
+    """
+    blocking, warnings = [], []
+
+    distribution = probes.get("weight_distribution") or {}
+    nonfinite = sum(stats.get("nonfinite", 0) for stats in distribution.values())
+    if nonfinite:
+        blocking.append(f"{nonfinite} non-finite weights")
+    for layer, stats in distribution.items():
+        if stats.get("dead_fraction", 0.0) >= dead_fraction_limit:
+            blocking.append(
+                f"{layer} is {stats['dead_fraction']:.0%} silent (capacity collapsed)")
+        elif stats.get("dead_fraction", 0.0) >= 0.5:
+            warnings.append(f"{layer} is {stats['dead_fraction']:.0%} silent")
+
+    q_max = probes.get("q_max_abs")
+    if isinstance(q_max, (int, float)):
+        if q_max > q_max_abs_limit:
+            blocking.append(
+                f"value estimates reach {q_max:.2f}, far outside the reward range "
+                f"(limit {q_max_abs_limit}) — the value recursion is diverging")
+        elif q_max > 1.5:
+            warnings.append(f"value estimates reach {q_max:.2f}, above the reward range")
+
+    # Recorded as a warning on purpose: improving from terrible to poor is
+    # still improving, and the score gates already account for it.
+    for key, label in (("take_the_win_rate", "takes an available win"),
+                       ("block_the_loss_rate", "blocks a forced loss")):
+        value = probes.get(key)
+        if isinstance(value, (int, float)) and value < 0.75:
+            warnings.append(f"{label} only {value:.0%} of the time")
+
+    return HealthVerdict(healthy=not blocking, blocking=blocking, warnings=warnings)
+
+
+def apply_health_gate(decision: GateDecision, probes: dict, **limits) -> GateDecision:
+    """Combine a score decision with the health check. A promotion can be
+    withdrawn by a disqualifying fault; a rejection is never overturned."""
+    verdict = check_health(probes, **limits)
+    if decision.promote and not verdict.healthy:
+        return GateDecision(
+            promote=False,
+            relative_pass=decision.relative_pass,
+            absolute_pass=decision.absolute_pass,
+            reason=(f"promotion withheld — {verdict.reason}. Scores qualified "
+                    f"({decision.reason})"),
+            parity=decision.parity,
+            bench_gain_significant=decision.bench_gain_significant,
+        )
+    if verdict.warnings:
+        return GateDecision(
+            promote=decision.promote,
+            relative_pass=decision.relative_pass,
+            absolute_pass=decision.absolute_pass,
+            reason=f"{decision.reason} [health warnings: {'; '.join(verdict.warnings)}]",
+            parity=decision.parity,
+            bench_gain_significant=decision.bench_gain_significant,
+        )
+    return decision

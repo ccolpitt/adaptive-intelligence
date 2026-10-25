@@ -1,0 +1,165 @@
+{
+  "lineage_id": "connect4-L2",
+  "task_id": "connect4",
+  "description": "Second line of Connect 4 policies. Starts from a randomly initialised network and is allowed to look ahead while training, which the first line never was. Begun because the first line reached 0.116 out of 1.0 across 36 experiments and could not climb further: it had no mechanism that made each generation's training data better than the network producing it.",
+  "parent_lineage": "connect4",
+  "cycles": 12,
+  "total_games": 4800,
+  "best_challenger_score": 0.06845238095238095,
+  "current_champion_score": 0.06845238095238095,
+  "promotions": 3,
+  "parity_cycles": 1,
+  "trend": "flat",
+  "rubrics_used": [
+    "r002-lookahead-32-puct"
+  ],
+  "rubric_summaries": {
+    "r002-lookahead-32-puct": "r002-lookahead-32-puct: dqn, 32 states/move by puct, search-value targets"
+  },
+  "points": [
+    {
+      "cycle": 0,
+      "cumulative_games": 400,
+      "challenger_score": 0.0,
+      "champion_score": null,
+      "promoted": false,
+      "parity": true,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 1,
+      "cumulative_games": 800,
+      "challenger_score": 0.03571428571428571,
+      "champion_score": 0.03571428571428571,
+      "promoted": true,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 2,
+      "cumulative_games": 1200,
+      "challenger_score": 0.017857142857142856,
+      "champion_score": 0.03571428571428571,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 3,
+      "cumulative_games": 1600,
+      "challenger_score": 0.023809523809523808,
+      "champion_score": 0.03571428571428571,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 4,
+      "cumulative_games": 2000,
+      "challenger_score": 0.029761904761904764,
+      "champion_score": 0.03571428571428571,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 5,
+      "cumulative_games": 2400,
+      "challenger_score": 0.03571428571428571,
+      "champion_score": 0.03571428571428571,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 6,
+      "cumulative_games": 2800,
+      "challenger_score": 0.05952380952380953,
+      "champion_score": 0.05952380952380953,
+      "promoted": true,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 7,
+      "cumulative_games": 3200,
+      "challenger_score": 0.05357142857142857,
+      "champion_score": 0.05952380952380953,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 8,
+      "cumulative_games": 3600,
+      "challenger_score": 0.03571428571428571,
+      "champion_score": 0.05952380952380953,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 9,
+      "cumulative_games": 4000,
+      "challenger_score": 0.047619047619047616,
+      "champion_score": 0.05952380952380953,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 10,
+      "cumulative_games": 4400,
+      "challenger_score": 0.041666666666666664,
+      "champion_score": 0.05952380952380953,
+      "promoted": false,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    },
+    {
+      "cycle": 11,
+      "cumulative_games": 4800,
+      "challenger_score": 0.06845238095238095,
+      "champion_score": 0.06845238095238095,
+      "promoted": true,
+      "parity": false,
+      "parameter_count": 182919,
+      "search_budget": 32,
+      "rubric_id": "r002-lookahead-32-puct",
+      "frontier_depth": 1
+    }
+  ]
+}
