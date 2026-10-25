@@ -145,6 +145,7 @@ def _play_one(trainer, kind: str, env, champion_q, opponent_act):
             "q_mean_abs": float(np.mean(stats.value_abs_means)) if stats.value_abs_means else None,
             "result": stats.learner_result,
             "search_states": stats.search_states,
+            "moves": stats.moves,
         }
     stats = trainer.play_episode(env, opponent_q=champion_q, opponent_act=opponent_act)
     return {
@@ -155,6 +156,7 @@ def _play_one(trainer, kind: str, env, champion_q, opponent_act):
         "q_mean_abs": float(np.mean(stats.q_abs_means)) if stats.q_abs_means else None,
         "result": stats.learner_result,
         "search_states": None,
+        "moves": stats.moves,
     }
 
 
@@ -433,7 +435,11 @@ def run_cycles(task: Task, store_root: Union[str, Path],
         t_start = time.time()
         series: Dict[str, List] = {k: [] for k in
                                    ("loss", "grad_norm", "q_mean_abs", "result",
-                                    "unique_states", "epsilon", "search_states")}
+                                    "unique_states", "epsilon", "search_states",
+                                    # moves per game: the denominator that turns
+                                    # positions-per-game into positions-per-move,
+                                    # which is the unit the budget is stated in
+                                    "moves")}
         states_before = trainer.search_states_examined
 
         for game in range(cfg.games_per_cycle):
@@ -455,6 +461,7 @@ def run_cycles(task: Task, store_root: Union[str, Path],
             states_before = trainer.search_states_examined
             series["search_states"].append(
                 spent if trainer.cfg.search_budget else None)
+            series["moves"].append(measured.get("moves"))
 
         # Measurement. The policy alone first, which is the definition every
         # score in the project's history was produced under.

@@ -181,3 +181,8 @@
 {"at": "2026-10-25T14:20:56.460727+00:00", "cycle": 59, "generation": 13, "kind": "policy_added", "policy_id": "connect4-L5-pol-00062", "score": 0.6220238095238094}
 {"at": "2026-10-25T14:21:01.244352+00:00", "cycle": 59, "kind": "promoted", "policy_id": "connect4-L5-pol-00062", "reason": "promoted: beats champion (h2h 0.69 over 200 games (95% CI 0.634-0.741)) AND improves benchmark (bench 0.622 vs champion 0.598 [within noise]) [health warnings: policy_fc.weight is 53% silent; takes an", "score": 0.6220238095238094}
 {"at": "2026-10-25T14:21:01.280766+00:00", "cycle": 59, "games": 200, "kind": "cycle_completed", "promoted": true, "score": 0.6220238095238094}
+{"at": "2026-10-25T18:48:28.487044+00:00", "cycle": 60, "from_policy": "connect4-L5-pol-00062", "kind": "resumed", "note": "replay buffer and exploration rate restart on resume"}
+{"at": "2026-10-25T18:58:40.210994+00:00", "cycle": 60, "generation": 14, "kind": "policy_added", "policy_id": "connect4-L5-pol-00063", "score": 0.38988095238095233}
+{"at": "2026-10-25T18:58:43.639920+00:00", "cycle": 60, "kind": "rejected", "parity": false, "policy_id": "connect4-L5-pol-00063", "reason": "rejected: neither beats champion (h2h 0.39 over 200 games (95% CI 0.337-0.450)) nor improves benchmark (bench 0.390 vs champion 0.610 [within noise]) [health warnings: takes an available win only 67% ", "score": 0.38988095238095233}
+{"at": "2026-10-25T18:58:43.675791+00:00", "checks": ["lookahead stayed inside its budget"], "cycle": 60, "kind": "contradiction_found"}
+{"at": "2026-10-25T18:58:43.677289+00:00", "cycle": 60, "games": 200, "kind": "cycle_completed", "promoted": false, "score": 0.38988095238095233}

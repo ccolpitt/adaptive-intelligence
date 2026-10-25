@@ -53,13 +53,41 @@ def test_a_clean_cycle_raises_nothing():
 
 def test_spending_more_than_the_budget_is_a_contradiction():
     """The defect the human asked to have fixed: a budget of 32 that examined
-    400 positions."""
+    400 positions. Both series are per GAME, so the budget comparison must
+    divide by that game's move count."""
     record = make_record()
     record.search_budget = 32
-    record.series = {**record.series, "search_states": [400] * 40}
+    record.series = {**record.series,
+                     "search_states": [400 * 20] * 40,  # 400 per move
+                     "moves": [20] * 40}
     findings = check_cycle(record, [])
     assert any(f.severity == CONTRADICTION for f in findings)
     assert "lookahead stayed inside its budget" in names(findings)
+
+
+def test_an_on_budget_cycle_is_not_flagged():
+    """Regression for R-006. A per-game total of 8,400 positions against a
+    per-move budget of 200 is exactly on budget across a 42-move game; the
+    check compared the two without dividing and raised a false
+    contradiction, sending the reader after a defect that did not exist."""
+    record = make_record()
+    record.search_budget = 200
+    record.series = {**record.series,
+                     "search_states": [200 * 42] * 40,
+                     "moves": [42] * 40}
+    assert not any(f.severity == CONTRADICTION for f in check_cycle(record, []))
+
+
+def test_a_budget_that_cannot_be_verified_says_so():
+    """Records written before moves-per-game was captured must report that
+    the check could not run, rather than passing silently or failing."""
+    record = make_record()
+    record.search_budget = 200
+    record.series = {**record.series, "search_states": [8400] * 40}
+    record.series.pop("moves", None)
+    findings = check_cycle(record, [])
+    assert not any(f.severity == CONTRADICTION for f in findings)
+    assert "the budget can be checked" in names(findings)
 
 
 def test_a_bounded_value_head_exceeding_one_is_a_contradiction():

@@ -78,18 +78,37 @@ def check_cycle(record, history: Optional[List] = None) -> List[Finding]:
     # -- things that cannot be true --------------------------------------
 
     budget = record.search_budget
-    spent = [v for v in series.get("search_states", []) if v is not None]
-    if budget > 0 and spent:
-        worst = max(spent)
-        if worst > budget * 1.05:  # a little slack for per-game accumulation
+    # The budget is per MOVE. The series records positions examined per GAME,
+    # summed over that game's moves, so the two must be divided before they
+    # can be compared. Getting this wrong raised a false contradiction in the
+    # first cycle it ran on (retro R-006) — a per-game total of 8,400 against
+    # a per-move budget of 200 is 200 per move across a 42-move game, exactly
+    # on budget. A check that cannot state its own units is worse than no
+    # check, because it sends the reader looking for a defect that is not
+    # there.
+    spent = series.get("search_states", [])
+    moves = series.get("moves", [])
+    if budget > 0 and spent and moves and len(moves) == len(spent):
+        per_move = [s / m for s, m in zip(spent, moves)
+                    if s is not None and m]
+        if per_move and max(per_move) > budget * 1.02:
             out.append(Finding(
                 CONTRADICTION, "lookahead stayed inside its budget",
                 f"at most {budget} distinct positions examined per move, because "
                 f"that is the declared budget and the budget is the compute "
                 f"currency that makes two policies comparable",
-                f"a game averaged {worst:.0f} positions per move",
+                f"the worst game averaged {max(per_move):.0f} positions per move",
                 ["budgeted_search.BudgetedSearch.run", "the per-move accounting"],
             ))
+    elif budget > 0 and spent and not moves:
+        out.append(Finding(
+            UNEXPECTED, "the budget can be checked",
+            "positions examined per game and moves per game are both recorded, "
+            "so the per-move spend can be computed and compared with the budget",
+            "moves per game was not recorded, so the budget cannot be verified "
+            "for this cycle",
+            ["whether the renderer version predates the 'moves' series"],
+        ))
 
     value_max = _num(probes.get("q_max_abs"))
     bounded = "move_score_max_abs" in probes  # two-headed: value head is squashed

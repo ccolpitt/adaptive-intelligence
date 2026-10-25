@@ -183,35 +183,69 @@ def main() -> None:
         import subprocess
         from datetime import datetime, timezone
 
-        from .jsonl_store import read_jsonl
+        from .cycle_record import CycleStore
 
-        procs = subprocess.run(
+        # The process table is the ground truth for "is something running".
+        # A training run writes nothing for minutes at a time while it plays
+        # its games, so file timestamps alone cannot answer this.
+        procs = [line for line in subprocess.run(
             ["pgrep", "-fl", "experiments/exp"], capture_output=True, text=True
-        ).stdout.strip()
-        print("experiment processes:")
-        print(f"  {procs}" if procs else "  none running")
+        ).stdout.strip().splitlines() if "caffeinate" not in line]
 
-        events = read_jsonl(store.root / "archive" / "events.jsonl")
-        if events:
-            last = events[-1]
-            at = datetime.fromisoformat(last["at"])
-            age_min = (datetime.now(timezone.utc) - at).total_seconds() / 60
-            beat = "LIVE (an iteration completed recently)" if age_min < 20 else "quiet"
-            print(f"archive heartbeat: last event {age_min:.0f} min ago "
-                  f"({last.get('kind')} {last.get('policy_id', '')}) — {beat}")
+        if procs:
+            print("RUNNING:")
+            for line in procs:
+                pid, _, cmd = line.partition(" ")
+                print(f"  pid {pid}  {cmd.replace('python3 -u ', '')}")
+        else:
+            print("RUNNING: nothing — no experiment process is alive")
 
-        champ = store.archive.current_champion("connect4")
-        if champ:
-            entry = store.archive.get_entry(champ)
-            _, meta = store.archive.load_policy(champ)
-            bench = next((r["score"] for r in reversed(meta.get("eval_records", []))
-                          if "benchmark" in str(r.get("benchmark_ref"))), None)
-            print(f"champion: {champ} (gen {entry.get('generation')}, "
-                  f"bench {bench:.3f})" if bench is not None else f"champion: {champ}")
+        # Progress per line of policies, newest cycle first. This is the
+        # useful view: a run's champion belongs to ITS lineage, so reading one
+        # global champion reports whichever line happened to write last.
+        cycles_store = CycleStore(store.root / "cycles")
+        lineage_dirs = sorted((store.root / "cycles").glob("*"))
+        if lineage_dirs:
+            print("\nlines of policies:")
+        for directory in lineage_dirs:
+            if not directory.is_dir():
+                continue
+            records = cycles_store.load_all(directory.name)
+            if not records:
+                continue
+            last = records[-1]
+            age_min = (datetime.now(timezone.utc)
+                       - datetime.fromisoformat(last.created_at)).total_seconds() / 60
+            best = max((r.evaluation.get("score") or 0) for r in records)
+            champion_score = next(
+                (r.evaluation.get("score") for r in reversed(records) if r.promoted), None)
+            # A cycle takes minutes, so "no new cycle yet" is normal while a
+            # run is alive; it only means something is wrong if nothing is.
+            if any(directory.name in p or last.experiment_id in p for p in procs):
+                state = f"training (last cycle finished {age_min:.0f} min ago)"
+            elif age_min < 30:
+                state = f"just stopped ({age_min:.0f} min ago)"
+            else:
+                state = f"idle ({age_min / 60:.1f} h since last cycle)"
+            print(f"  {directory.name:16s} cycle {last.cycle:>3}  "
+                  f"{last.cumulative_games:>7,} games  "
+                  f"best {best:.3f}  champion "
+                  f"{(f'{champion_score:.3f}' if champion_score is not None else '—')}"
+                  f"  [{state}]")
+            faults = [f for r in records for f in (r.sanity or [])
+                      if f.get("severity") == "contradiction"]
+            if faults:
+                print(f"    {len(faults)} CONTRADICTION(S) recorded — "
+                      f"investigate before trusting these numbers "
+                      f"(learning rule 11)")
 
         pending = [i for i in store.experiments.all_ids()
                    if store.experiments.get(i).verdict is None]
-        print(f"experiments awaiting verdict: {pending if pending else 'none'}")
+        if pending:
+            print(f"\nverdicts owed: {', '.join(pending)}")
+            print("  (an experiment without a verdict is an unfinished thought)")
+        else:
+            print("\nverdicts owed: none")
     elif args.command == "review-checks":
         from .cycle_record import CycleStore
         from .sanity import render_review, review_checks

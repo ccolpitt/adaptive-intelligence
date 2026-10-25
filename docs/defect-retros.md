@@ -156,3 +156,49 @@ a hypothesis that was not the one being tested.
    promotion, rejection, resume — not merely complete a cycle.
 5. **A claim to follow a published method is verified against the source
    before the run.**
+
+---
+
+## R-006 — A check that could not state its own units (exp-029)
+
+**What broke.** The expectation check for the lookahead budget compared
+positions examined per **game** against the budget stated per **move**. The
+first cycle it ran on reported a contradiction: 8,400 positions against a
+budget of 200. Across a 42-move game, 8,400 positions is exactly 200 per
+move — precisely on budget. The search was behaving correctly and the check
+was wrong.
+
+**How it was caught.** The human asked how to tell whether a run is in
+progress. Improving the status command to answer that surfaced the recorded
+contradiction, and learning rule 11 required investigating it before trusting
+any number from the cycle. Ten minutes of investigation, no wasted compute.
+
+**Cost.** Nearly none in compute, but the cost of the class is high: a false
+contradiction sends the reader hunting a defect that does not exist, and
+rule 11 says a contradiction invalidates interpretation of the whole cycle.
+A check that cries wolf is worse than no check, because it spends the
+attention the real ones need and teaches the reader to discount them.
+
+**Root cause, and the part worth keeping.** I noticed the unit mismatch while
+writing the check and covered it with a tolerance — the comment read "a
+little slack for per-game accumulation" — instead of fixing it. The slack was
+5%, and the true mismatch was a factor of forty. A tolerance was applied to a
+problem that was not about tolerance at all. **Papering over an inconsistency
+I had already half-seen is the actual defect here**, and it is the one most
+likely to recur, because it felt at the time like pragmatism.
+
+**Changed.**
+- The check now divides by the moves in that game, and the number of moves
+  per game is recorded in every cycle so the division is possible.
+- When the denominator is absent — records written before it was captured —
+  the check reports that the budget **could not be verified**, rather than
+  passing silently or claiming a violation. A check that cannot run should
+  say so; silence is indistinguishable from success.
+- Tests cover all three cases: a genuine overspend fires, an on-budget cycle
+  stays clean, and a record missing the denominator reports that it cannot
+  be checked.
+
+**Standing rule added.** A check that compares two measurements must state
+the units of both in its own text. If a tolerance is being used to reconcile
+them, that is a sign the units differ and the comparison is wrong — not a
+sign the tolerance needs widening.
