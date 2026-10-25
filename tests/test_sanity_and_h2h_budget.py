@@ -212,7 +212,8 @@ def test_a_large_budget_reaching_only_two_moves_is_unexpected():
 def test_severity_ordering_and_headline():
     record = make_record()
     record.search_budget = 32
-    record.series = {**record.series, "search_states": [400] * 40}
+    record.series = {**record.series, "search_states": [400 * 20] * 40,
+                     "moves": [20] * 40}
     findings = check_cycle(record, [])
     assert findings[0].severity == CONTRADICTION, "worst first"
     assert worst_severity(findings) == CONTRADICTION

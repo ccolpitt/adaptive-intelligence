@@ -23,7 +23,10 @@ def make_record(cycle=0, lineage="connect4-L2", score=0.05, promoted=False,
             "result": [(-1) ** i for i in range(n)],
             "unique_states": list(range(10, 10 + n)),
             "epsilon": [0.5 - 0.01 * i for i in range(n)],
-            "search_states": [30] * n,
+            # positions examined per GAME, and the moves per game needed to
+            # turn that into positions per move — the unit the budget uses
+            "search_states": [30 * 20] * n,
+            "moves": [20] * n,
         }
     return CycleRecord(
         cycle=cycle, lineage_id=lineage, task_id="connect4",
