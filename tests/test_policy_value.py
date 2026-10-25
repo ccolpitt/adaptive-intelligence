@@ -234,3 +234,37 @@ def test_weights_can_be_carried_into_a_new_trainer():
     assert not np.allclose(a.q_function()(obs), b.q_function()(obs))
     b.load_weights_from(a.net)
     assert np.allclose(a.q_function()(obs), b.q_function()(obs))
+
+
+# ---------------------------------------------------------------------------
+# how far the weights actually move
+# ---------------------------------------------------------------------------
+
+
+def test_training_records_how_far_the_weights_moved():
+    """The gradient norm says how large the correction was; this says how much
+    of it reached the weights. A converged or frozen network can still show a
+    healthy gradient norm, so only this number answers "is it still
+    learning?"."""
+    trainer = PolicyValueTrainer(6, 7, 7, PolicyValueConfig(
+        seed=0, search_budget=16, batch_size=8, train_steps_per_game=4))
+    stats = trainer.play_game(Connect4Env())
+    assert stats.weight_deltas, "every training step must report a movement"
+    assert len(stats.weight_deltas) == len(stats.grad_norms)
+    assert all(d > 0.0 for d in stats.weight_deltas)
+    assert all(np.isfinite(d) for d in stats.weight_deltas)
+
+
+def test_a_learning_rate_of_zero_moves_nothing():
+    """The control that gives the number its meaning: with no learning rate
+    the weights cannot move, however large the gradient."""
+    trainer = PolicyValueTrainer(6, 7, 7, PolicyValueConfig(
+        seed=0, search_budget=16, batch_size=8, train_steps_per_game=4))
+    for group in trainer.optimizer.param_groups:
+        group["lr"] = 0.0
+    stats = trainer.play_game(Connect4Env())
+    assert stats.weight_deltas, "steps still ran"
+    assert max(stats.weight_deltas) == 0.0
+    assert max(stats.grad_norms) > 0.0, (
+        "the gradient was non-zero, which is exactly why the gradient norm "
+        "cannot be used to detect a network that has stopped moving")

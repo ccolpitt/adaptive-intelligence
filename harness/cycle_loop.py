@@ -146,6 +146,8 @@ def _play_one(trainer, kind: str, env, champion_q, opponent_act):
             "result": stats.learner_result,
             "search_states": stats.search_states,
             "moves": stats.moves,
+            "weight_delta": (float(np.mean(stats.weight_deltas))
+                             if stats.weight_deltas else None),
         }
     stats = trainer.play_episode(env, opponent_q=champion_q, opponent_act=opponent_act)
     return {
@@ -157,6 +159,7 @@ def _play_one(trainer, kind: str, env, champion_q, opponent_act):
         "result": stats.learner_result,
         "search_states": None,
         "moves": stats.moves,
+        "weight_delta": None,  # not yet measured for the single-output learner
     }
 
 
@@ -438,8 +441,14 @@ def run_cycles(task: Task, store_root: Union[str, Path],
                                     "unique_states", "epsilon", "search_states",
                                     # moves per game: the denominator that turns
                                     # positions-per-game into positions-per-move,
-                                    # which is the unit the budget is stated in
-                                    "moves")}
+                                    # which is the unit the budget is stated in.
+                                    # Also a competence signal in its own right:
+                                    # a policy with killer instinct should end
+                                    # games sooner, especially against weak play.
+                                    "moves",
+                                    # mean absolute weight change per training
+                                    # step — "is the network still learning?"
+                                    "weight_delta")}
         states_before = trainer.search_states_examined
 
         for game in range(cfg.games_per_cycle):
@@ -462,6 +471,7 @@ def run_cycles(task: Task, store_root: Union[str, Path],
             series["search_states"].append(
                 spent if trainer.cfg.search_budget else None)
             series["moves"].append(measured.get("moves"))
+            series["weight_delta"].append(measured.get("weight_delta"))
 
         # Measurement. The policy alone first, which is the definition every
         # score in the project's history was produced under.

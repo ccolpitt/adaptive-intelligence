@@ -292,3 +292,47 @@ def test_head_to_head_gives_both_sides_the_same_budget(tmp_path):
     assert h2h["budget_each"] == 16, "the budget each side received is recorded"
     assert h2h["games"] == 4
     assert 0.0 <= h2h["score"] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# has the network stopped moving?
+# ---------------------------------------------------------------------------
+
+
+def test_a_network_that_does_not_move_at_all_is_a_contradiction():
+    """Training applied an update, so the weights must have changed. Zero
+    movement means no learning happened, and more games on the same material
+    cannot change that."""
+    record = make_record()
+    record.series = {**record.series, "weight_delta": [0.0] * 40}
+    findings = check_cycle(record, [])
+    assert "the network is still changing" in names(findings)
+    assert any(f.severity == CONTRADICTION and "still changing" in f.check
+               for f in findings)
+
+
+def test_a_network_that_has_nearly_stopped_moving_is_unexpected():
+    """Shrinking updates are normal as a policy converges, but below roughly
+    1e-6 the network is absorbing nothing new, which is the signal to change
+    the training material rather than add more of it."""
+    record = make_record()
+    record.series = {**record.series, "weight_delta": [5e-7] * 40}
+    findings = check_cycle(record, [])
+    assert "the network is still learning usefully" in names(findings)
+    assert not any(f.severity == CONTRADICTION for f in findings)
+
+
+def test_healthy_weight_movement_is_not_flagged():
+    record = make_record()
+    record.series = {**record.series, "weight_delta": [1e-4] * 40}
+    findings = check_cycle(record, [])
+    assert not any("network is still" in f.check for f in findings)
+
+
+def test_a_cycle_without_the_measurement_is_not_flagged():
+    """Records written before the metric existed must not raise a finding
+    about a number they never captured."""
+    record = make_record()
+    record.series = {**record.series, "weight_delta": [None] * 40}
+    findings = check_cycle(record, [])
+    assert not any("network is still" in f.check for f in findings)

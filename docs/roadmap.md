@@ -612,7 +612,33 @@ endangers something old. Required capabilities, each a candidate hypothesis:
 
 **8d — Tasks must ladder, and the curriculum must review.** Learning task B
 after task A overwrites the weights that encoded A unless A keeps being
-practised. This phase has to design the ladder, not discover it by accident:
+practised. This phase has to design the ladder, not discover it by accident.
+
+**When to advance the curriculum — a measurable trigger (human-proposed,
+2026-10-26).** The decision to introduce new material should not be a guess.
+The mean absolute change in the network's weights per training step is now
+recorded every cycle (`series.weight_delta`), and it answers "is this network
+still absorbing anything?" — which the gradient norm cannot, because an
+optimiser can scale a large gradient down to nothing. The proposal:
+
+- while the weight change is healthy, keep training on the current material;
+- when it falls below a threshold — tentatively around 1e-6, to be calibrated
+  from observed runs rather than asserted — the network has stopped learning
+  from this material, and **that is the moment to introduce the next task**,
+  rather than spending more games on something exhausted;
+- the new material must be mixed with continued review of the earlier task,
+  at a recorded review fraction, so the earlier competence is not overwritten;
+- retention is then measured on each earlier task's own frozen evaluation
+  definition, so forgetting shows up as a number rather than a suspicion.
+
+This turns "the tasks must ladder up" into a closed loop with a trigger, a
+mixture, and a retention measurement — and it means the curriculum advances
+on evidence that learning has stalled, not on a schedule. The sanity checks
+already flag a weight change below 1e-6 as the point to consider advancing,
+and a change of zero as a contradiction, since a training step that moves
+nothing means no learning is occurring at all.
+
+The rest of the design:
 
 - each new task is chosen to build on competence the previous ones
   established, so the ladder has rungs rather than gaps;

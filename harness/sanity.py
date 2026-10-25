@@ -262,6 +262,36 @@ def check_cycle(record, history: Optional[List] = None) -> List[Finding]:
                  "refreshed"],
             ))
 
+    # Has the network stopped moving? The gradient norm cannot answer this:
+    # the optimiser may scale a large gradient down to nothing. Only the
+    # actual change in the weights can.
+    deltas = [v for v in series.get("weight_delta", []) if v is not None]
+    if deltas:
+        recent = float(np.mean(deltas[-max(1, len(deltas) // 5):]))
+        if recent <= 1e-7:
+            out.append(Finding(
+                CONTRADICTION, "the network is still changing",
+                "training applies a non-zero update, so the weights must move; "
+                "a mean change of zero means no learning is occurring at all "
+                "and further games on the same material cannot help",
+                f"mean absolute weight change was {recent:.2e} over the last "
+                f"fifth of the cycle",
+                ["whether the learning rate has collapsed",
+                 "whether gradients are reaching the weights",
+                 "whether the replay buffer is returning the same batch"],
+            ))
+        elif recent <= 1e-6:
+            out.append(Finding(
+                UNEXPECTED, "the network is still learning usefully",
+                "weight changes shrink as a policy converges, which is "
+                "expected, but below roughly 1e-6 the network has effectively "
+                "stopped absorbing anything new — the moment to introduce new "
+                "material rather than more of the same (roadmap 8d)",
+                f"mean absolute weight change was {recent:.2e}",
+                ["whether the curriculum should advance",
+                 "whether the task has been exhausted"],
+            ))
+
     deepest = record.search_deepest_ply
     if budget >= 64 and 0 < deepest <= 2:
         out.append(Finding(

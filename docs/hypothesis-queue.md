@@ -46,6 +46,47 @@ BOUNDS. Now: no plateau checks before iteration 12, patience 8.
 
 ## NEXT, IN ORDER (from the current evidence)
 
+0. **Train on positions the policy does not generate itself.** The strongest
+   diagnosis the project has produced, from a direct investigation on
+   2026-10-26. The two-headed policy is tactically **perfect inside its own
+   distribution** and fails outside it:
+
+   - constructed position, X holding 0,1,2 on the bottom row with the win at
+     column 3: the move head plays column 6 (logit 2.40 against the winning
+     move's −0.16) while the value head correctly reads +0.962 and a
+     200-position search correctly plays 3 with 178 of 199 visits;
+   - scored only on positions it actually faces against a random opponent:
+     takes a win 0.71, blocks 1.00;
+   - the card reports 0.49–0.65 because it also scores positions where the
+     *opponent* is to move — hypotheticals the policy never acts on — and
+     positions produced by random play, which it never trains on.
+
+   So the fault is **not** the value head, **not** the search, and **not**
+   the negamax signs. It is the move head generalising badly to positions
+   self-play never visits. This matters directly for the score: the ladder's
+   opponents are solvers, whose positions are nothing like self-play, which
+   is a sufficient explanation for 0.62 rather than 0.90.
+
+   Candidate levers, one at a time: randomise the opening a few plies so
+   self-play starts from varied positions; mix in the diverse-opponent
+   rotation that lineage 2 used; train on positions drawn from games against
+   the ladder solvers themselves. The first is cheapest and borrows no
+   knowledge of what a good move is.
+
+0b. **Fix the tactical measurement.** Report in-distribution and
+   off-distribution tactical rates **separately**, and stop scoring positions
+   where the opponent is to move. The current single number mixes three
+   different questions and reads pessimistically, which nearly sent the
+   investigation after the value head.
+
+0c. **Discount the reward by how long the win took** (human-proposed). A win
+   at move 10 should be worth more than a win at move 42, so that taking an
+   available win is always preferred to prolonging the game. The value target
+   is currently the bare outcome; discounting it by the remaining number of
+   moves would make immediacy part of what the policy is trained to want.
+   Cheap, and it addresses the same symptom from the reward side rather than
+   the data side — so it must be tested separately from lever 0, not with it.
+
 1. **Deeper ladder rungs — `connect4-eval@v2`.** The top rung is a 6-move
    search and the policy now wins 0.55 against it. If scores keep climbing
    the measuring stick becomes the limit. Add rungs at 8, 10 and 12,

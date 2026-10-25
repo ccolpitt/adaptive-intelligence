@@ -139,6 +139,13 @@ class GameStats:
     total_losses: List[float] = field(default_factory=list)
     grad_norms: List[float] = field(default_factory=list)
     value_abs_means: List[float] = field(default_factory=list)
+    # Mean absolute change in every weight, per training step. This is how
+    # much the network actually MOVED, which is not the same as the gradient
+    # norm: a large gradient that the optimiser scales down, or that is
+    # cancelled by momentum, moves the weights very little. If this falls to
+    # zero the network has stopped learning and further training on the same
+    # material cannot help.
+    weight_deltas: List[float] = field(default_factory=list)
     search_states: int = 0
     search_cache_hits: int = 0
     deepest: int = 0
@@ -304,12 +311,14 @@ class PolicyValueTrainer:
         for _ in range(self.cfg.train_steps_per_game):
             step_losses = self._train_step()
             if step_losses is not None:
-                policy_loss, value_loss, total, grad_norm, value_abs = step_losses
+                (policy_loss, value_loss, total, grad_norm, value_abs,
+                 weight_delta) = step_losses
                 stats.policy_losses.append(policy_loss)
                 stats.value_losses.append(value_loss)
                 stats.total_losses.append(total)
                 stats.grad_norms.append(grad_norm)
                 stats.value_abs_means.append(value_abs)
+                stats.weight_deltas.append(weight_delta)
         return stats
 
     # -- learning -------------------------------------------------------
@@ -334,10 +343,20 @@ class PolicyValueTrainer:
         self.optimizer.zero_grad()
         total.backward()
         grad_norm = nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
+
+        # How far the weights actually move, measured either side of the step.
+        # Distinct from the gradient norm: the optimiser can scale a large
+        # gradient down to almost nothing, so only this answers "is the
+        # network still changing?".
+        before = torch.cat([p.detach().reshape(-1).clone()
+                            for p in self.net.parameters()])
         self.optimizer.step()
+        after = torch.cat([p.detach().reshape(-1) for p in self.net.parameters()])
+        weight_delta = float((after - before).abs().mean().item())
+
         return (float(policy_loss.item()), float(value_loss.item()),
                 float(total.item()), float(grad_norm),
-                float(value.detach().abs().mean().item()))
+                float(value.detach().abs().mean().item()), weight_delta)
 
     # -- diagnostics ----------------------------------------------------
 
