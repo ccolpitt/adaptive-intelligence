@@ -272,3 +272,219 @@ def worst_severity(findings: List[Finding]) -> Optional[str]:
     if not findings:
         return None
     return max(findings, key=lambda f: SEVERITY_ORDER[f.severity]).severity
+
+
+# ---------------------------------------------------------------------------
+# reviewing the checks themselves
+# ---------------------------------------------------------------------------
+#
+# A set of checks written against past defects will drift out of usefulness.
+# Some checks will have fired once, been fixed structurally, and can never
+# fire again — they cost attention and suggest a vigilance that is no longer
+# needed. Others will never have fired because the situation they describe
+# has not arisen yet, which is not the same as being useless. And defects
+# keep arriving that nothing checks for.
+#
+# So the check set is reviewed rather than left to accumulate. This produces
+# the evidence for that review; a human decides what to cut, because deleting
+# a check is a decision about what we are willing to stop watching.
+
+
+CHECK_REGISTRY = {
+    "lookahead stayed inside its budget": {
+        "motivated_by": "a budget of 32 positions that examined 400 per move",
+        "retired_if": "the budget is enforced inside the search itself AND a "
+                      "test asserts it, so overspending cannot compile",
+        "still_needed_because": "the accounting is spread across the search, "
+                                "the trainer and the record, and any of the "
+                                "three can drift",
+    },
+    "value estimates respect the reward range": {
+        "motivated_by": "R-001: a rubric asked for bounded values and the "
+                        "setting never reached the trainer (reached 2.428)",
+        "retired_if": "every learner squashes its value output and no "
+                      "unbounded learner remains in use",
+        "still_needed_because": "single-output learners are still selectable "
+                                "for reproducing earlier experiments",
+    },
+    "weights are finite": {
+        "motivated_by": "general defence; has never fired",
+        "retired_if": "never — it is nearly free and the failure is total",
+        "still_needed_because": "a silent overflow would invalidate a run "
+                                "while every score still looked plausible",
+    },
+    "training error is a finite number": {
+        "motivated_by": "general defence; has never fired",
+        "retired_if": "never — nearly free",
+        "still_needed_because": "same reason as non-finite weights",
+    },
+    "thinking does not make the policy worse": {
+        "motivated_by": "R-004: move selection by value rather than by visit "
+                        "count, which made searching actively harmful at "
+                        "small budgets",
+        "retired_if": "search is removed from evaluation entirely",
+        "still_needed_because": "it detects a whole class of sign and "
+                                "convention errors in the search at once",
+    },
+    "a policy trained with lookahead takes an immediate win": {
+        "motivated_by": "four lineages scoring adequately while missing half "
+                        "of all forced blocks",
+        "retired_if": "tactical rates exceed 0.95 for twenty consecutive "
+                      "cycles across two lineages",
+        "still_needed_because": "it is currently the live question: tactics "
+                                "lag the score in the active lineage",
+    },
+    "won positions are rated above lost positions": {
+        "motivated_by": "the weakest possible statement of a value function "
+                        "working; has never fired",
+        "retired_if": "never — it is the floor of value learning",
+        "still_needed_because": "it would catch a reversed sign convention "
+                                "immediately, which is an easy mistake to "
+                                "make when outcomes are recorded per mover",
+    },
+    "a promotion does not lower the champion's score": {
+        "motivated_by": "two promotions each individually forgivable took the "
+                        "champion from 0.083 to 0.042",
+        "retired_if": "the strict gate is the only gate and the looser ones "
+                      "are deleted",
+        "still_needed_because": "the looser gates remain selectable, and the "
+                                "failure compounds silently",
+    },
+    "new positions keep being seen": {
+        "motivated_by": "general defence; has never fired",
+        "retired_if": "a cheaper exploration measure replaces it",
+        "still_needed_because": "a collapse in exploration would otherwise "
+                                "look like ordinary slow progress",
+    },
+    "the network does not change shape mid-lineage": {
+        "motivated_by": "general defence; has never fired",
+        "retired_if": "roadmap phase 8a arrives, where growing a network "
+                      "mid-lineage becomes deliberate — then this check must "
+                      "be rewritten to compare against the rubric rather than "
+                      "against earlier cycles",
+        "still_needed_because": "until then a size change means two different "
+                                "networks are being compared as one",
+    },
+    "a trained policy beats a random player": {
+        "motivated_by": "the floor every competent policy should clear",
+        "retired_if": "the floor is cleared by every lineage within one cycle",
+        "still_needed_because": "it separates 'the task is hard' from 'nothing "
+                                "is learning'",
+    },
+    "the floor does not fall back": {
+        "motivated_by": "forgetting, which is a central concern of the "
+                        "project and has not yet been observed here",
+        "retired_if": "never — it is the earliest warning of forgetting, "
+                      "which the whole programme is about",
+        "still_needed_because": "multi-task training has not started; this is "
+                                "the check that will matter most when it does",
+    },
+    "training error does not grow within a cycle": {
+        "motivated_by": "general defence; has never fired",
+        "retired_if": "it proves noisy enough to be ignored in practice",
+        "still_needed_because": "a target outrunning the network is a real "
+                                "failure mode of bootstrapped learning",
+    },
+    "a large budget looks further than a small one": {
+        "motivated_by": "the observation that a search degenerates to "
+                        "breadth-first when its guidance is uninformative",
+        "retired_if": "the search is replaced by one whose shape is fixed",
+        "still_needed_because": "it detects a move head that has stopped "
+                                "providing useful guidance, which looks like "
+                                "nothing else in the instruments",
+    },
+}
+
+
+def review_checks(records: List, retros_path: str = "docs/defect-retros.md") -> Dict:
+    """Evidence for deciding what the check set should contain.
+
+    Reports, for every check: how often it has fired, when it last fired,
+    the defect that motivated it, and the condition under which it should be
+    retired. Also lists defects recorded in the retros that no check covers,
+    which is the more important half — a defect that happened once and is
+    unwatched will happen again.
+    """
+    import re
+    from pathlib import Path
+
+    fired: Dict[str, List[int]] = {}
+    for record in records:
+        for finding in (record.sanity or []):
+            fired.setdefault(finding["check"], []).append(record.cycle)
+
+    known = set(CHECK_REGISTRY)
+    rows = []
+    for check, meta in sorted(CHECK_REGISTRY.items()):
+        cycles = fired.get(check, [])
+        rows.append({
+            "check": check,
+            "times_fired": len(cycles),
+            "last_fired_cycle": cycles[-1] if cycles else None,
+            "motivated_by": meta["motivated_by"],
+            "retired_if": meta["retired_if"],
+            "still_needed_because": meta["still_needed_because"],
+        })
+
+    # Checks that fired but are not registered: someone added a check and did
+    # not record why, which is how a set becomes unreviewable.
+    unregistered = sorted(set(fired) - known)
+
+    # Defects on record that no check mentions. Weak matching on purpose —
+    # it is better to raise a few false candidates than to miss one.
+    uncovered = []
+    path = Path(retros_path)
+    if path.exists():
+        text = path.read_text()
+        for match in re.finditer(r"^## (R-\d+) — (.+)$", text, re.MULTILINE):
+            ident, title = match.group(1), match.group(2)
+            words = {w.lower() for w in re.findall(r"[a-z]{5,}", title.lower())}
+            covered = any(
+                words & {w.lower() for w in re.findall(r"[a-z]{5,}", blob.lower())}
+                for meta in CHECK_REGISTRY.values()
+                for blob in (meta["motivated_by"],)
+            )
+            if not covered:
+                uncovered.append({"defect": ident, "title": title})
+
+    return {
+        "checks": rows,
+        "never_fired": [r["check"] for r in rows if r["times_fired"] == 0],
+        "fired": [r["check"] for r in rows if r["times_fired"] > 0],
+        "unregistered_checks": unregistered,
+        "defects_without_a_check": uncovered,
+        "cycles_reviewed": len(records),
+    }
+
+
+def render_review(review: Dict) -> str:
+    lines = [
+        "REVIEW OF THE EXPECTATION CHECKS",
+        "=" * 76,
+        f"{review['cycles_reviewed']} cycles examined. A check that has never "
+        f"fired is not useless — it may describe a situation that has not",
+        "arisen yet. The question for each is the retirement condition, not the "
+        "firing count.",
+        "",
+        f"{'fired':>5}  {'last':>5}  check",
+    ]
+    for row in review["checks"]:
+        lines.append(f"{row['times_fired']:>5}  "
+                     f"{str(row['last_fired_cycle'] or '—'):>5}  {row['check']}")
+    lines += ["", "RETIREMENT CONDITIONS (a human decides; deleting a check is a",
+              "decision about what we stop watching)"]
+    for row in review["checks"]:
+        lines.append(f"  {row['check']}")
+        lines.append(f"      retire if: {row['retired_if']}")
+    if review["unregistered_checks"]:
+        lines += ["", "CHECKS THAT FIRED BUT ARE NOT REGISTERED — record why each "
+                  "exists, or the set becomes unreviewable:"]
+        lines += [f"  - {c}" for c in review["unregistered_checks"]]
+    if review["defects_without_a_check"]:
+        lines += ["", "DEFECTS ON RECORD THAT NO CHECK WATCHES FOR — the more "
+                  "important half of this review:"]
+        for d in review["defects_without_a_check"]:
+            lines.append(f"  - {d['defect']}: {d['title']}")
+    else:
+        lines += ["", "Every recorded defect has a check that would catch its class."]
+    return "\n".join(lines)

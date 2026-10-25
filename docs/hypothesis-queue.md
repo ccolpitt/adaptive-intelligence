@@ -38,6 +38,42 @@ BOUNDS. Now: no plateau checks before iteration 12, patience 8.
 
 ## RUNNING
 
+- **exp-028-two-heads, extended 60 → 160 cycles.** The two-headed policy
+  reached 0.622 scored with no lookahead (every earlier lineage topped out at
+  0.113) and the trend was still rising when the budget ran out. This asks
+  whether 0.622 is a plateau or a waypoint. Resumable: rerun
+  `experiments/exp_028_two_heads.py` to continue.
+
+## NEXT, IN ORDER (from the current evidence)
+
+1. **Deeper ladder rungs — `connect4-eval@v2`.** The top rung is a 6-move
+   search and the policy now wins 0.55 against it. If scores keep climbing
+   the measuring stick becomes the limit. Add rungs at 8, 10 and 12,
+   published as a NEW evaluation version so no recorded score is
+   invalidated. Build this the moment the extended run clears ~0.75.
+2. **Close the tactical gap.** Taking an available win is 0.65–0.91 and
+   blocking a forced loss 0.77–0.89, both too low for a policy beating 6-ply
+   opponents, and both noisy cycle to cycle. Three candidates, one at a time:
+   raise the search budget (a coarse visit distribution is a coarse training
+   target); weight the move-head loss toward positions whose outcome is
+   already decided; oversample decision-critical positions
+   (`TrainerConfig.tactical_fraction`, built and never tested).
+   Watch with `python -m harness tactics --lineage connect4-L5`.
+3. **A true oracle as the top rung.** The ladder's opponents are
+   depth-limited perfect play. Connect 4 is a solved game, so a genuine
+   oracle is possible and would be the honest ceiling.
+4. **Cross-lineage league.** The gate only compares a challenger to its own
+   lineage's champion. Direct matches across lineages would let L5 be
+   measured against L1–L4 head to head rather than only through the ladder.
+5. **Add checks for R-003 and R-005.** `python -m harness review-checks`
+   reports that both recorded defects — a code path assuming a learner's
+   internals, and registration blocking its own resume — have no check
+   watching for them. Both were crashes rather than silent wrong numbers, so
+   the right fix is probably an integration test that forces every path where
+   learners differ, not a runtime check.
+
+## PREVIOUSLY QUEUED
+
 - (nothing — exp-022 complete; awaiting human decision on champion reset, see
   DONE)
 

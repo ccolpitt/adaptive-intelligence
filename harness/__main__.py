@@ -70,6 +70,14 @@ def main() -> None:
     p_exp.add_argument("--plots", action="store_true",
                        help="also render a matplotlib PNG dashboard (per-episode curves)")
 
+    p_rev = sub.add_parser("review-checks", help="should the expectation checks be trimmed or extended?")
+    p_rev.add_argument("--store", default="store")
+    p_rev.add_argument("--lineage", default=None, help="default: every lineage")
+
+    p_tac = sub.add_parser("tactics", help="does it take wins and block losses? the triage view")
+    p_tac.add_argument("--store", default="store")
+    p_tac.add_argument("--lineage", required=True)
+
     p_cp = sub.add_parser("campaign-plot", help="one picture: best score per experiment + champion lineage")
     p_cp.add_argument("--store", default="store")
 
@@ -204,6 +212,67 @@ def main() -> None:
         pending = [i for i in store.experiments.all_ids()
                    if store.experiments.get(i).verdict is None]
         print(f"experiments awaiting verdict: {pending if pending else 'none'}")
+    elif args.command == "review-checks":
+        from .cycle_record import CycleStore
+        from .sanity import render_review, review_checks
+
+        cycles_store = CycleStore(store.root / "cycles")
+        if args.lineage:
+            records = cycles_store.load_all(args.lineage)
+        else:
+            records = [r for d in sorted((store.root / "cycles").glob("*"))
+                       if d.is_dir() for r in cycles_store.load_all(d.name)]
+        print(render_review(review_checks(records)))
+    elif args.command == "tactics":
+        from .cycle_record import CycleStore
+
+        records = CycleStore(store.root / "cycles").load_all(args.lineage)
+        if not records:
+            print(f"no cycles recorded for {args.lineage}")
+            return
+        print(f"TACTICAL COMPETENCE — {args.lineage}")
+        print("A policy that beats a 6-move perfect-play opponent should take an")
+        print("available win and block a forced loss essentially every time. Where")
+        print("it does not, the gap says the learning path is losing something the")
+        print("search already found — which makes these the best triage numbers we")
+        print("have. Measured on the policy alone, with no lookahead.")
+        print()
+        print(f"{'cycle':>6} {'games':>8} {'score':>7} {'takes win':>10} "
+              f"{'blocks loss':>12}  flag")
+        for r in records:
+            take = r.probes.get("take_the_win_rate")
+            block = r.probes.get("block_the_loss_rate")
+            score = r.evaluation.get("score")
+            flag = ""
+            if isinstance(score, (int, float)) and score > 0.4:
+                if isinstance(take, (int, float)) and take < 0.9:
+                    flag += " win-blind"
+                if isinstance(block, (int, float)) and block < 0.9:
+                    flag += " block-blind"
+            print(f"{r.cycle:>6} {r.cumulative_games:>8,} "
+                  f"{(f'{score:.3f}' if isinstance(score, (int, float)) else '—'):>7} "
+                  f"{(f'{take:.2f}' if isinstance(take, (int, float)) else '—'):>10} "
+                  f"{(f'{block:.2f}' if isinstance(block, (int, float)) else '—'):>12}"
+                  f"  {flag}")
+        takes = [r.probes.get("take_the_win_rate") for r in records[-5:]]
+        blocks = [r.probes.get("block_the_loss_rate") for r in records[-5:]]
+        takes = [t for t in takes if isinstance(t, (int, float))]
+        blocks = [b for b in blocks if isinstance(b, (int, float))]
+        if takes and blocks:
+            import statistics
+
+            t_now, b_now = statistics.mean(takes), statistics.mean(blocks)
+            print(f"\nlast five cycles: takes a win {t_now:.0%}, blocks a loss {b_now:.0%}")
+            if t_now < 0.9 or b_now < 0.9:
+                print("VERDICT: tactically incomplete. The search sees these positions,")
+                print("so what it found is not fully reaching the weights. Candidates:")
+                print("  - raise the search budget (a coarse visit distribution is a")
+                print("    coarse training target)")
+                print("  - weight the move-head loss toward decided positions")
+                print("  - oversample decision-critical positions when training")
+                print("    (TrainerConfig.tactical_fraction, built and never tested)")
+            else:
+                print("VERDICT: tactically sound.")
     elif args.command == "campaign-plot":
         from .experiment_card import save_campaign_plot
 
