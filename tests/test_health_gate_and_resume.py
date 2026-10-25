@@ -196,3 +196,103 @@ def test_evaluation_lookahead_is_recorded_alongside_the_plain_score(tmp_path):
     assert evaluation["score_with_lookahead"] is not None
     assert evaluation["eval_budget"] == 16
     assert evaluation["deciding_score"] == evaluation["score"]
+
+
+def test_a_checkpoint_carries_the_optimiser_and_the_replay_buffer(tmp_path):
+    """R-007: restoring weights alone restarts the optimiser's accumulated
+    averages and empties the replay buffer, which undoes real progress. A
+    checkpoint has to carry all three."""
+    from harness.agents.policy_value import PolicyValueConfig, PolicyValueTrainer
+    from harness.tasks.connect4 import Connect4Env
+    from harness.trainer_checkpoint import TrainerCheckpointStore
+
+    cfg = dict(seed=0, search_budget=16, batch_size=8, train_steps_per_game=4)
+    trained = PolicyValueTrainer(6, 7, 7, PolicyValueConfig(**cfg))
+    for _ in range(4):
+        trained.play_game(Connect4Env())
+    assert len(trained.buffer) > 0
+    assert trained.optimizer.state, "the optimiser accumulated state to carry"
+
+    store = TrainerCheckpointStore(tmp_path / "checkpoints")
+    store.save("L", trained.checkpoint(), cycle=7)
+
+    continued = PolicyValueTrainer(6, 7, 7, PolicyValueConfig(**cfg))
+    assert not continued.buffer and not continued.optimizer.state
+    state = store.load("L")
+    assert state["cycle"] == 7
+    continued.load_checkpoint(state)
+
+    assert len(continued.buffer) == len(trained.buffer)
+    assert continued.games_done == trained.games_done
+    assert continued.search_states_examined == trained.search_states_examined
+    assert len(continued.unique_states_seen) == len(trained.unique_states_seen)
+    # The optimiser's per-weight averages, which are what a cold restart loses.
+    a = trained.optimizer.state_dict()["state"]
+    b = continued.optimizer.state_dict()["state"]
+    assert set(a) == set(b)
+    assert all(np.allclose(a[k]["exp_avg"].numpy(), b[k]["exp_avg"].numpy())
+               for k in a)
+    # And the policy itself is unchanged.
+    obs = Connect4Env().reset()
+    assert np.allclose(trained.q_function()(obs), continued.q_function()(obs))
+
+
+def test_a_checkpoint_for_a_different_network_is_refused(tmp_path):
+    """Silently training a differently-shaped policy would make a lineage
+    incomparable with itself."""
+    from harness.agents.policy_value import PolicyValueConfig, PolicyValueTrainer
+
+    small = PolicyValueTrainer(6, 7, 7, PolicyValueConfig(seed=0, channels=16))
+    big = PolicyValueTrainer(6, 7, 7, PolicyValueConfig(seed=0, channels=64))
+    with pytest.raises(ValueError, match="cannot change shape"):
+        big.load_checkpoint(small.checkpoint())
+
+
+def test_a_missing_or_unreadable_checkpoint_reads_as_absent(tmp_path):
+    from harness.trainer_checkpoint import TrainerCheckpointStore
+
+    store = TrainerCheckpointStore(tmp_path / "checkpoints")
+    assert store.load("never-ran") is None
+    path = store.path_for("corrupt")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"not a checkpoint")
+    assert store.load("corrupt") is None, (
+        "an unreadable checkpoint must not stop a run from starting")
+
+
+def test_resuming_restores_the_whole_learner_not_just_its_weights(tmp_path):
+    """The loop must use the checkpoint when one exists, and say so."""
+    from harness.cycle_loop import CycleLoopConfig, run_cycles
+    from harness.lineage import Lineage, LineageStore, RubricStore, TrainingRubric
+    from harness.tasks.connect4 import Connect4Task
+    from harness.trainer_checkpoint import TrainerCheckpointStore
+
+    RubricStore(tmp_path / "rubrics").publish(TrainingRubric(
+        rubric_id="r-pv-test", name="two heads, tiny",
+        description="two-headed learner for the resume test",
+        learner="policy-value", search_budget=8, spend_rule="puct",
+        target_kind="search-visits", bounded_targets=True,
+        hyperparameters={"batch_size": 8, "train_steps_per_game": 2,
+                         "channels": 16, "hidden": 32, "conv_layers": 2}))
+    LineageStore(tmp_path / "lineages").create(Lineage(
+        lineage_id="ckpt-L", task_id="connect4", rubric_id="r-pv-test",
+        description="checkpointed resume test"))
+    base = dict(lineage_id="ckpt-L", rubric_id="r-pv-test", games_per_cycle=4,
+                gate_games=4, random_eval_games=4, probe_games=2, seed=3,
+                renderer="connect4_v2", verbose=False)
+
+    run_cycles(Connect4Task(benchmark_games=4), tmp_path,
+               CycleLoopConfig(cycles=1, **base))
+    state = TrainerCheckpointStore(tmp_path / "checkpoints").load("ckpt-L")
+    assert state is not None, "a cycle must leave a resume point behind"
+    assert state["cycle"] == 0
+    assert state["buffer"]["obs"] is not None, "the replay buffer is carried"
+    assert state["optimizer"]["state"], "the optimiser's averages are carried"
+
+    run_cycles(Connect4Task(benchmark_games=4), tmp_path,
+               CycleLoopConfig(cycles=1, **base))
+    resumed = LineageStore(tmp_path / "lineages").events("ckpt-L", "resumed")
+    assert resumed, "the resume is on the record"
+    assert "full learner state" in resumed[-1]["note"], (
+        "the record must say WHAT was restored, so a weights-only resume "
+        "cannot be mistaken for a faithful one")

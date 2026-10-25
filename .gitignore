@@ -19,6 +19,12 @@ dist/
 # a separate decision (git-lfs or object storage).
 store/archive/*.pt
 
+# Resume points: the learner's full state (weights, optimiser averages,
+# replay buffer) so an interrupted run continues rather than restarts. Tens
+# of megabytes, overwritten each cycle, and entirely derived — the history
+# lives in the cycle records, which ARE committed.
+store/checkpoints/
+
 # Derived renders. Learning rule: store the DATA (json), regenerate the
 # picture with a versioned renderer on demand. Never commit a chart.
 store/cards/**/*.png

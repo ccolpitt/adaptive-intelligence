@@ -42,6 +42,7 @@ from .promotion_gate import GATE_RULES, apply_health_gate
 from .renderers import latest_for
 from .scripted_opponents import RandomOpponent
 from .stats import Z_95
+from .trainer_checkpoint import TrainerCheckpointStore
 
 
 @dataclass
@@ -409,28 +410,46 @@ def run_cycles(task: Task, store_root: Union[str, Path],
     # on disk; what is missing is the network being trained, which is not the
     # champion unless the last cycle promoted. Reload the most recent
     # challenger so training continues rather than silently restarting.
+    checkpoints = TrainerCheckpointStore(Path(store_root) / "checkpoints")
     if cfg.resume and start_cycle > 0:
         previous = cycles_store.load(lineage.lineage_id, start_cycle - 1)
-        if previous is not None and previous.challenger_id:
+        # First choice: the learner's whole state — weights, the optimiser's
+        # accumulated averages, and the replay buffer. Restoring only weights
+        # restarts the other two, which costs real progress (R-007).
+        restored = "nothing"
+        state = checkpoints.load(lineage.lineage_id) if hasattr(
+            trainer, "load_checkpoint") else None
+        if state is not None:
+            try:
+                trainer.load_checkpoint(state)
+                restored = (f"full learner state from cycle "
+                            f"{state.get('cycle', '?')}")
+            except Exception as err:
+                print(f"[{lineage.lineage_id}] checkpoint unusable ({err!r}); "
+                      f"falling back to the last archived weights")
+                state = None
+        if state is None and previous is not None and previous.challenger_id:
             try:
                 last_module, _ = archive.load_policy(previous.challenger_id)
                 trainer.load_weights_from(last_module)
-                if cfg.verbose:
-                    print(f"[{lineage.lineage_id}] resuming at cycle {start_cycle} "
-                          f"from {previous.challenger_id} "
-                          f"({cumulative:,} games already trained)")
+                restored = (f"weights only from {previous.challenger_id} — the "
+                            f"optimiser and replay buffer restart, which costs "
+                            f"progress (R-007)")
             except Exception as err:
                 print(f"[{lineage.lineage_id}] could not reload "
                       f"{previous.challenger_id} ({err!r}); continuing from the "
                       f"current weights")
-        # The replay buffer and exploration rate are not persisted, so a
-        # resumed run restarts both. Recorded here because it makes a resumed
-        # cycle slightly different from an uninterrupted one.
+        if cfg.verbose:
+            print(f"[{lineage.lineage_id}] resuming at cycle {start_cycle} "
+                  f"({cumulative:,} games already trained): restored {restored}")
+        # The single-output learner's exploration rate is still not persisted,
+        # so it restarts halfway. Recorded because it makes a resumed cycle
+        # different from an uninterrupted one.
         if hasattr(trainer.cfg, "eps_start"):
             trainer.eps = max(trainer.cfg.eps_end, trainer.cfg.eps_start * 0.5)
         lineages.record(lineage.lineage_id, "resumed", cycle=start_cycle,
                         from_policy=previous.challenger_id if previous else None,
-                        note="replay buffer and exploration rate restart on resume")
+                        note=f"restored {restored}")
     produced: List[CycleRecord] = []
 
     for offset in range(cfg.cycles):
@@ -648,6 +667,17 @@ def run_cycles(task: Task, store_root: Union[str, Path],
                               "expected": "the checks run", "observed": repr(err)}]
 
         cycles_store.save(record)
+        # A place to stand if this run is interrupted: the learner's whole
+        # state, not just its weights. Written after the record so a
+        # checkpoint never describes a cycle that was not recorded.
+        if hasattr(trainer, "checkpoint"):
+            try:
+                checkpoints.save(lineage.lineage_id, trainer.checkpoint(),
+                                 cycle=cycle_index)
+            except Exception as err:
+                print(f"[{lineage.lineage_id}] could not write a checkpoint "
+                      f"({err!r}); a restart would lose the optimiser and the "
+                      f"replay buffer")
         lineages.record(lineage.lineage_id, "cycle_completed", cycle=cycle_index,
                         games=cfg.games_per_cycle, score=bench.score,
                         promoted=decision.promote)

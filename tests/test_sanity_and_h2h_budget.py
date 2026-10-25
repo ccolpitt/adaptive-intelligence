@@ -336,3 +336,101 @@ def test_a_cycle_without_the_measurement_is_not_flagged():
     record.series = {**record.series, "weight_delta": [None] * 40}
     findings = check_cycle(record, [])
     assert not any("network is still" in f.check for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# what a restart costs
+# ---------------------------------------------------------------------------
+
+
+def test_a_large_drop_across_a_restart_is_inconsistent():
+    """R-007: a lineage resumed in a new process fell from 0.622 to 0.390 and
+    needed 27 cycles to climb back, because the optimiser's state and the
+    replay buffer were not carried across. Nothing in the recipe changed, so
+    the loop should have said so at the time."""
+    previous = make_record(cycle=59, score=0.622)
+    previous.experiment_id = "exp-028-two-heads"
+    previous.evaluation = {**previous.evaluation, "score": 0.622}
+    record = make_record(cycle=60, score=0.390)
+    record.experiment_id = "exp-029-two-heads-extended"
+    record.evaluation = {**record.evaluation, "score": 0.390}
+
+    findings = check_cycle(record, [previous])
+    assert "a restart does not cost the policy its progress" in names(findings)
+    finding = next(f for f in findings if "restart" in f.check)
+    assert finding.severity == INCONSISTENT
+    assert "0.622" in finding.observed and "0.390" in finding.observed
+
+
+def test_ordinary_variation_within_one_run_is_not_a_restart_finding():
+    previous = make_record(cycle=5, score=0.55)
+    previous.experiment_id = "exp-029-two-heads-extended"
+    previous.evaluation = {**previous.evaluation, "score": 0.55}
+    record = make_record(cycle=6, score=0.41)
+    record.experiment_id = "exp-029-two-heads-extended"
+    record.evaluation = {**record.evaluation, "score": 0.41}
+    assert "a restart does not cost the policy its progress" not in names(
+        check_cycle(record, [previous]))
+
+
+# ---------------------------------------------------------------------------
+# findings are derived, so they are recomputed rather than trusted
+# ---------------------------------------------------------------------------
+
+
+def test_a_stored_finding_the_current_checks_reject_is_reported_as_superseded():
+    """R-006 again, from the reading side. Twenty-seven cycles carried a
+    budget contradiction that the corrected check does not raise, and every
+    status display repeated it. A reader must recompute."""
+    from harness.sanity import recheck, superseded_findings
+
+    record = make_record()
+    record.search_budget = 200
+    record.series = {**record.series, "search_states": [200 * 42] * 40,
+                     "moves": [42] * 40}
+    record.sanity = [{"severity": "contradiction",
+                      "check": "lookahead stayed inside its budget",
+                      "expected": "at most 200 per move",
+                      "observed": "a game averaged 8400 positions per move"}]
+
+    assert not any(f.severity == CONTRADICTION for f in recheck(record))
+    superseded = superseded_findings(record)
+    assert len(superseded) == 1
+    assert superseded[0]["check"] == "lookahead stayed inside its budget"
+
+
+def test_a_finding_that_still_holds_is_not_called_superseded():
+    from harness.sanity import superseded_findings
+
+    record = make_record()
+    record.search_budget = 32
+    record.series = {**record.series, "search_states": [400 * 20] * 40,
+                     "moves": [20] * 40}
+    record.sanity = [{"severity": "contradiction",
+                      "check": "lookahead stayed inside its budget",
+                      "expected": "x", "observed": "y"}]
+    assert superseded_findings(record) == []
+
+
+def test_every_check_that_can_fire_is_registered():
+    """A check without a registry entry cannot be reviewed, which is how a
+    check set becomes something nobody dares to change."""
+    from harness.sanity import CHECK_REGISTRY
+
+    record = make_record()
+    record.search_budget = 32
+    record.series = {**record.series, "search_states": [400 * 20] * 40,
+                     "moves": [20] * 40, "weight_delta": [0.0] * 40}
+    record.probes = {**record.probes, "q_max_abs": 2.43,
+                     "move_score_max_abs": 5.0, "take_the_win_rate": 0.25,
+                     "q_at_solver_proven_wins": -0.3,
+                     "q_at_solver_proven_losses_mean": 0.4}
+    previous = make_record(cycle=0, score=0.9, promoted=True)
+    previous.experiment_id = "exp-aaa"
+    previous.evaluation = {**previous.evaluation, "score": 0.9}
+    record.experiment_id = "exp-bbb"
+    record.promoted = True
+    for finding in check_cycle(record, [previous]):
+        assert finding.check in CHECK_REGISTRY, (
+            f"{finding.check!r} fires but is not in CHECK_REGISTRY, so "
+            f"review-checks cannot report on it")

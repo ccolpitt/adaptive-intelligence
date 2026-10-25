@@ -224,6 +224,85 @@ class PolicyValueTrainer:
     def load_weights_from(self, module: torch.nn.Module) -> None:
         self.net.load_state_dict(module.state_dict())
 
+    # -- stopping and continuing ----------------------------------------
+    #
+    # Weights alone are not enough to continue a run. The optimiser carries
+    # per-weight averages built up over thousands of steps, and the replay
+    # buffer carries the games those steps learned from. Restoring only the
+    # weights restarts both, which measurably undoes progress: R-007 records
+    # a resumed lineage falling from 0.622 to 0.390 and needing 27 cycles —
+    # 5,400 games — to climb back. So a checkpoint is everything the learner
+    # needs to carry on as though it had never stopped.
+
+    def checkpoint(self) -> Dict:
+        """Everything needed to continue training exactly where this left
+        off, as plain data."""
+        return {
+            "format": 1,
+            "net": self.net.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            # Observations are stacked once rather than kept as a list of
+            # arrays, which makes the file a few large tensors instead of
+            # hundreds of thousands of small ones.
+            "buffer": {
+                "obs": np.stack([e[0] for e in self.buffer]) if self.buffer else None,
+                "visits": np.stack([e[1] for e in self.buffer]) if self.buffer else None,
+                "outcomes": np.array([e[2] for e in self.buffer], dtype=np.float32)
+                if self.buffer else None,
+            },
+            "counters": {
+                "games_done": self.games_done,
+                "search_states_examined": self.search_states_examined,
+                "search_cache_hits": self.search_cache_hits,
+                "search_moves": self.search_moves,
+                "search_deepest": self.search_deepest,
+                "unique_states_seen": list(self.unique_states_seen),
+            },
+            # Both generators that drive self-play, so a continued run does
+            # not replay the same games it already played.
+            "rng": self.rng.bit_generator.state,
+            "torch_rng": torch.get_rng_state(),
+            "shape": [self.rows, self.cols, self.n_actions,
+                      self.cfg.channels, self.cfg.hidden, self.cfg.conv_layers],
+        }
+
+    def load_checkpoint(self, state: Dict) -> None:
+        """Continue from a checkpoint. Raises if it describes a different
+        network, because silently training a differently-shaped policy would
+        make the lineage incomparable with itself."""
+        shape = [self.rows, self.cols, self.n_actions,
+                 self.cfg.channels, self.cfg.hidden, self.cfg.conv_layers]
+        if list(state.get("shape", shape)) != shape:
+            raise ValueError(
+                f"checkpoint is for a network of shape {state['shape']}, but "
+                f"this trainer builds {shape}; a lineage cannot change shape "
+                f"mid-run")
+        self.net.load_state_dict(state["net"])
+        self.optimizer.load_state_dict(state["optimizer"])
+        buffer = state.get("buffer") or {}
+        self.buffer.clear()
+        if buffer.get("obs") is not None:
+            for obs, visits, outcome in zip(buffer["obs"], buffer["visits"],
+                                            buffer["outcomes"]):
+                self.buffer.append((np.asarray(obs), np.asarray(visits),
+                                    float(outcome)))
+        counters = state.get("counters") or {}
+        self.games_done = counters.get("games_done", 0)
+        self.search_states_examined = counters.get("search_states_examined", 0)
+        self.search_cache_hits = counters.get("search_cache_hits", 0)
+        self.search_moves = counters.get("search_moves", 0)
+        self.search_deepest = counters.get("search_deepest", 0)
+        self.unique_states_seen = set(counters.get("unique_states_seen", []))
+        if state.get("rng") is not None:
+            self.rng.bit_generator.state = state["rng"]
+        if state.get("torch_rng") is not None:
+            torch.set_rng_state(state["torch_rng"].to(torch.uint8)
+                                if hasattr(state["torch_rng"], "to")
+                                else state["torch_rng"])
+        # The search holds a reference to the live network through
+        # self.policy_value, so it needs no reloading — but it caches nothing
+        # across moves, and its own generator is seeded from the config.
+
     # -- self-play ------------------------------------------------------
 
     def play_game(self, env: Environment,

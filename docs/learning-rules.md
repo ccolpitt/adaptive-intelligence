@@ -257,10 +257,15 @@ lineage log, naming the retro that explains it. A future reader meeting an
 unexplained contradiction has to re-investigate it, and rule 11 obliges them
 to. An annotation turns an hour of re-investigation into ten seconds.
 
-**Restarting is never free.** Cycle records and weights persist, but the
-replay buffer and the exploration rate restart, so a resumed run has a small
-discontinuity in the middle of the curve it exists to measure. Do not trade
-experimental continuity for a tidier record.
+**Restarting is never free, and the cost was larger than this rule first
+claimed.** The original wording here called a resume "a small discontinuity".
+It was measured afterwards and it was not small: restoring weights alone
+dropped lineage L5 from 0.622 to 0.390 and cost 27 cycles and 5,400 games to
+recover, because the optimiser's accumulated averages and the replay buffer
+both restarted (R-007). A learner now checkpoints its whole state and a
+resume prefers it, so a continuation is faithful — but the general lesson
+stands: do not trade experimental continuity for a tidier record, and do not
+assume an unmeasured discontinuity is small.
 
 **Stopping a run that is collecting data requires the human's agreement.**
 The agent may stop a run that has crashed, or one that is seconds old; a run
@@ -270,10 +275,35 @@ reasoning above laid out.
 **Status: in force** (2026-10-26, after the agent proposed killing a live
 run to silence a cosmetic flag, and the human stopped it).
 
-Each check names the defect that motivated it and says where to look, so the
-set grows as the project learns what can go wrong.
+## 13. A finding is derived data, so it is recomputed and never trusted
+from disk
+
+Expectation findings are written into each cycle record, which is right —
+they are what the run saw at the time, and that is history. But every
+*reader* recomputes them with the current checks rather than reading them
+back.
+
+**Why.** A check that was wrong when a cycle ran keeps reporting a defect
+that has since been fixed. Twenty-seven consecutive cycles of L5 carried a
+budget contradiction that the corrected check does not raise, and every
+status display repeated it (R-006, R-007). Worse, the process that wrote them
+was still running with the pre-fix code, so the stale findings kept arriving
+after the fix was committed.
+
+Where a stored finding and the current checks disagree, the disagreement is
+reported as **superseded** — not as a fault, and not hidden. It is a fact
+about the instruments: the check set changed after that cycle ran.
+
+The same reasoning applies to anything computed from a record: a chart (rule
+9), a diagnosis, a card. The record holds measurements. Everything derived
+from them is regenerated.
 
 **Status: in force.**
+
+Each check names the defect that motivated it and says where to look, so the
+set grows as the project learns what can go wrong. `python -m harness
+review-checks` reports, for every check, how often it has fired, the defect
+that motivated it, and the condition under which it should be retired.
 
 ## 10. Register the hypothesis before the run; record the verdict once
 

@@ -202,3 +202,73 @@ likely to recur, because it felt at the time like pragmatism.
 the units of both in its own text. If a tolerance is being used to reconcile
 them, that is a sign the units differ and the comparison is wrong — not a
 sign the tolerance needs widening.
+
+---
+## R-007 — A restart that looked like a plateau (exp-029)
+**What broke.** exp-029 continued lineage L5 from where exp-028 finished. Its
+registered hypothesis said so explicitly: "the only change is the number of
+cycles, from 60 to 160, continuing the SAME line of policies." But a resume
+restored only the network's weights. The optimiser's per-weight averages,
+accumulated over tens of thousands of steps, and the replay buffer holding
+the games those steps learned from, both restarted from nothing.
+
+The effect was immediate and large. The last cycle of exp-028 scored 0.622;
+the first cycle of exp-029, trained from exactly those weights under exactly
+that recipe, scored 0.390, and every rung of the benchmark fell together.
+Twenty-seven cycles — 5,400 games, about four and a half hours — brought it
+back to 0.592, still short of where it had started.
+
+**How it was caught.** Not by any instrument. The run reported no
+contradiction that was real; its 27 recorded contradictions were all the
+R-006 false positive, still being written because the process had loaded
+`sanity.py` before that fix. The drop was found by hand, trending the cycles
+either side of the boundary while answering the question "is this run worth
+continuing?". The corroborating evidence was in the series all along:
+training error fell from 1.303 to 1.101 and the gradient norm from 0.978 to
+0.703 at the boundary, then both climbed steadily back as the buffer refilled
+— the signature of a small, highly correlated buffer being easy to fit.
+
+**Cost.** About 5,400 games of compute, and worse, a confounded experiment:
+the hypothesis under test was "more of the same recipe keeps improving," and
+what actually ran was "the same recipe, plus an unregistered cold restart."
+Had the run been read without this investigation, the honest-looking
+conclusion would have been that the recipe had plateaued around 0.55 — the
+opposite of what the data says once the restart is accounted for. The policy
+was in fact improving throughout: taking an available win went from 0.65 to
+0.91 and blocking a forced loss from 0.77 to 0.95 over the same cycles.
+
+**Root cause.** A category error about what a learner is. The archive's
+definition — a policy is its weights — is correct for a policy, and it was
+reused for a *learner*, which is its weights plus the optimiser state plus
+the data it is learning from. The resume code even said so in a comment
+("the replay buffer and exploration rate are not persisted, so a resumed run
+restarts both") and recorded a note to that effect in the lineage log. The
+cost was documented and then not treated as a cost.
+
+**Changed.**
+- A learner now checkpoints its whole state — weights, optimiser state,
+  replay buffer, counters and both random generators — once per cycle, and a
+  resume prefers it. One file per lineage, overwritten, not committed.
+- A resume records *what* it restored, so a weights-only fallback cannot be
+  mistaken for a faithful continuation.
+- A new expectation check: a score falling by more than 0.15 across an
+  experiment boundary is INCONSISTENT, because nothing in the recipe changes
+  at a restart. It fires on cycle 60 when run against the stored records.
+- A checkpoint describing a differently-shaped network is refused rather than
+  partially applied.
+
+**Also found, and fixed, while investigating.** Expectation findings were
+being read back from the cycle records and trusted. Because the running
+process held a pre-fix copy of the check, every status display repeated 27
+contradictions that the corrected check does not raise. Findings are derived
+data: they are now recomputed on read, and a stored finding the current
+checks reject is reported as superseded rather than as a fault. Relatedly,
+`status` matched a running process to its lineage by comparing a hyphenated
+experiment id against an underscored filename, so a live run was reported as
+"just stopped".
+
+**Standing rule added.** If a comment explains why a shortcut is acceptable,
+the comment is evidence the shortcut has a cost. Either measure the cost or
+remove the shortcut; do not record it and move on. (Compare R-006, where a
+tolerance papered over a unit mismatch that had already been half-seen. Both
+defects are the same move: noticing and annotating instead of fixing.)

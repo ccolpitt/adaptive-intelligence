@@ -304,7 +304,51 @@ def check_cycle(record, history: Optional[List] = None) -> List[Finding]:
              "priors yet"],
         ))
 
+    # Did a process restart cost the policy its progress? Nothing in the
+    # recipe changes at a restart, so a large drop across one can only come
+    # from state that was not carried over.
+    if history:
+        previous = history[-1]
+        before = _num((previous.evaluation or {}).get("score"))
+        after = _num(evaluation.get("score"))
+        changed_experiment = (previous.experiment_id and record.experiment_id
+                              and previous.experiment_id != record.experiment_id)
+        if changed_experiment and before and after and after < before - 0.15:
+            out.append(Finding(
+                INCONSISTENT, "a restart does not cost the policy its progress",
+                "a resumed run continues from the last challenger's weights, "
+                "so it must start where the previous run finished; a large "
+                "drop means state the learner depends on was not carried "
+                "across the restart",
+                f"the score fell from {before:.3f} to {after:.3f} across the "
+                f"boundary between {previous.experiment_id} and "
+                f"{record.experiment_id}",
+                ["whether the optimiser's state was restored",
+                 "whether the replay buffer restarted empty",
+                 "whether the weights loaded came from the intended policy"],
+            ))
+
     return sorted(out, key=lambda f: -SEVERITY_ORDER[f.severity])
+
+
+def recheck(record, history: Optional[List] = None) -> List[Finding]:
+    """The findings for a stored cycle, recomputed with the current checks.
+
+    Findings are derived data, so they are never trusted from disk. A check
+    that was wrong when the cycle ran would otherwise keep reporting a defect
+    that has since been fixed — which is exactly what happened with R-006:
+    twenty-seven cycles carried a budget contradiction that the corrected
+    check does not raise, and the status display repeated it every time.
+    """
+    return check_cycle(record, history or [])
+
+
+def superseded_findings(record, history: Optional[List] = None) -> List[Dict]:
+    """Findings written into a cycle record that the current checks no longer
+    raise. Worth reporting rather than hiding: it says the check set changed
+    after this cycle ran, which is a fact about the instruments."""
+    current = {f.check for f in recheck(record, history)}
+    return [f for f in (record.sanity or []) if f.get("check") not in current]
 
 
 def render(findings: List[Finding]) -> str:
@@ -442,6 +486,45 @@ CHECK_REGISTRY = {
                                 "providing useful guidance, which looks like "
                                 "nothing else in the instruments",
     },
+    "a restart does not cost the policy its progress": {
+        "motivated_by": "R-007: resuming a lineage in a new process dropped "
+                        "the score from 0.622 to 0.390 and took 27 cycles to "
+                        "climb back, because the optimiser's state and the "
+                        "replay buffer were not carried across",
+        "retired_if": "the trainer's full state is checkpointed and a test "
+                      "asserts that a resumed cycle matches an uninterrupted "
+                      "one",
+        "still_needed_because": "the cost was invisible for a whole run and "
+                                "was read as the policy plateauing, which "
+                                "would have been the wrong conclusion",
+    },
+    "the network is still changing": {
+        "motivated_by": "the possibility that saturated weights stop moving "
+                        "while every other instrument still looks healthy",
+        "retired_if": "never — it is nearly free and distinguishes 'stopped "
+                      "learning' from 'learning slowly'",
+        "still_needed_because": "the gradient norm cannot answer it: the "
+                                "optimiser can scale a large gradient down "
+                                "to nothing",
+    },
+    "the network is still learning usefully": {
+        "motivated_by": "the curriculum trigger in roadmap 8d, which needs a "
+                        "measurable definition of 'this material is spent'",
+        "retired_if": "the curriculum advances automatically on this signal, "
+                      "at which point it becomes a control input rather than "
+                      "a finding",
+        "still_needed_because": "it is the only measurement that says when to "
+                                "change the training material rather than add "
+                                "more of it",
+    },
+    "the budget can be checked": {
+        "motivated_by": "R-006: records written before moves-per-game was "
+                        "captured cannot verify the budget, and silence would "
+                        "read as a pass",
+        "retired_if": "every lineage in the store records moves per game",
+        "still_needed_because": "a check that cannot run must say so rather "
+                                "than pass",
+    },
 }
 
 
@@ -457,10 +540,13 @@ def review_checks(records: List, retros_path: str = "docs/defect-retros.md") -> 
     import re
     from pathlib import Path
 
+    # Recomputed, not read from the records: the question is what the CURRENT
+    # check set does, and a stored finding reflects whatever the check set was
+    # on the day the cycle ran.
     fired: Dict[str, List[int]] = {}
-    for record in records:
-        for finding in (record.sanity or []):
-            fired.setdefault(finding["check"], []).append(record.cycle)
+    for i, record in enumerate(records):
+        for finding in recheck(record, records[:i]):
+            fired.setdefault(finding.check, []).append(record.cycle)
 
     known = set(CHECK_REGISTRY)
     rows = []

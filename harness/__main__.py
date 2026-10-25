@@ -221,7 +221,16 @@ def main() -> None:
                 (r.evaluation.get("score") for r in reversed(records) if r.promoted), None)
             # A cycle takes minutes, so "no new cycle yet" is normal while a
             # run is alive; it only means something is wrong if nothing is.
-            if any(directory.name in p or last.experiment_id in p for p in procs):
+            # An experiment id is hyphenated and its script file is not, so
+            # the comparison has to ignore the difference — otherwise a live
+            # run is reported as having just stopped.
+            def _flat(text: str) -> str:
+                return text.replace("-", "").replace("_", "").lower()
+
+            alive = any(_flat(directory.name) in _flat(p)
+                        or _flat(last.experiment_id or "\0") in _flat(p)
+                        for p in procs)
+            if alive:
                 state = f"training (last cycle finished {age_min:.0f} min ago)"
             elif age_min < 30:
                 state = f"just stopped ({age_min:.0f} min ago)"
@@ -232,12 +241,26 @@ def main() -> None:
                   f"best {best:.3f}  champion "
                   f"{(f'{champion_score:.3f}' if champion_score is not None else '—')}"
                   f"  [{state}]")
-            faults = [f for r in records for f in (r.sanity or [])
-                      if f.get("severity") == "contradiction"]
+            # Findings are recomputed rather than read from the records. A
+            # check that was wrong when a cycle ran would otherwise keep
+            # reporting a defect that has since been fixed (R-006, R-007).
+            from .sanity import CONTRADICTION, recheck, superseded_findings
+
+            faults, superseded = [], []
+            for i, r in enumerate(records):
+                faults += [f for f in recheck(r, records[:i])
+                           if f.severity == CONTRADICTION]
+                superseded += superseded_findings(r, records[:i])
             if faults:
-                print(f"    {len(faults)} CONTRADICTION(S) recorded — "
-                      f"investigate before trusting these numbers "
-                      f"(learning rule 11)")
+                checks = sorted({f.check for f in faults})
+                print(f"    {len(faults)} CONTRADICTION(S) — investigate "
+                      f"before trusting these numbers (learning rule 11): "
+                      f"{'; '.join(checks)}")
+            if superseded:
+                stale = sorted({f.get("check", "?") for f in superseded})
+                print(f"    {len(superseded)} finding(s) recorded during the "
+                      f"run no longer hold under the current checks "
+                      f"(not faults): {'; '.join(stale)}")
 
         pending = [i for i in store.experiments.all_ids()
                    if store.experiments.get(i).verdict is None]
