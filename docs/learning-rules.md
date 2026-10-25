@@ -212,9 +212,63 @@ separated into three kinds (`harness/sanity.py`):
 **A contradiction halts interpretation of the whole cycle, not just the
 check that fired.** If one number cannot be true then something is measuring
 the wrong thing, and every other number in that cycle is suspect until it is
-explained. Five defects have reached a run so far and none of them crashed;
-each was found because a single impossible number was noticed by eye, late.
+explained. Six defects have reached a run so far and only two crashed; the
+rest were found because a single impossible number was noticed by eye, late.
 See `docs/defect-retros.md`.
+
+**Halting interpretation is not the same as halting the run.** See rule 12.
+
+## 12. Stop a run only when the flaw invalidates what it is measuring
+
+A flaw found mid-run is a judgement, not an automatic stop. The question is
+narrow: **does this flaw make the run's conclusions untrustworthy, or only
+its annotations?** Compute spent is real, and a run that can still teach
+something should keep going.
+
+**Stop the run.** The flaw corrupts what the experiment is measuring:
+
+- moves are being chosen by something other than what the hypothesis says
+  (R-004: selection by backed-up value where the hypothesis said most-visited);
+- promotion decisions are wrong, so the champion — the thing every later
+  challenger is measured against — is being set by a broken rule
+  (R-002: a category error that would have blocked every promotion);
+- the benchmark, the training targets, or the reward are wrong, so the
+  numbers do not mean what they claim;
+- the learner is not training at all.
+
+In these cases the data is not evidence about the hypothesis, and more of it
+is worth nothing.
+
+**Keep the run going, and annotate.** The flaw is in observation, not in what
+is being observed:
+
+- a broken expectation check, which reports a fault that is not there
+  (R-006: a per-game total compared against a per-move budget);
+- a missing or mislabelled metric, where the underlying behaviour is sound;
+- a cosmetic or reporting defect;
+- a setting that failed to apply, where the run still produces valid evidence
+  about *something* — though **the registered hypothesis is then untested**
+  and must be recorded as such (R-001: the bounded-value setting never
+  reached the trainer, and that run still produced the program's best
+  lookahead result).
+
+**When keeping a flawed run, write the annotation at the time**, into the
+lineage log, naming the retro that explains it. A future reader meeting an
+unexplained contradiction has to re-investigate it, and rule 11 obliges them
+to. An annotation turns an hour of re-investigation into ten seconds.
+
+**Restarting is never free.** Cycle records and weights persist, but the
+replay buffer and the exploration rate restart, so a resumed run has a small
+discontinuity in the middle of the curve it exists to measure. Do not trade
+experimental continuity for a tidier record.
+
+**Stopping a run that is collecting data requires the human's agreement.**
+The agent may stop a run that has crashed, or one that is seconds old; a run
+hours into collecting evidence is a decision to put to the human, with the
+reasoning above laid out.
+
+**Status: in force** (2026-10-26, after the agent proposed killing a live
+run to silence a cosmetic flag, and the human stopped it).
 
 Each check names the defect that motivated it and says where to look, so the
 set grows as the project learns what can go wrong.
