@@ -272,3 +272,66 @@ the comment is evidence the shortcut has a cost. Either measure the cost or
 remove the shortcut; do not record it and move on. (Compare R-006, where a
 tolerance papered over a unit mismatch that had already been half-seen. Both
 defects are the same move: noticing and annotating instead of fixing.)
+
+---
+## R-008 — A budget that bought fourteen positions instead of two hundred
+**What broke.** The search's budget is defined as the number of distinct
+positions the network may look at for one move. That is the project's compute
+currency: equal budgets are what make two policies comparable. Positions
+already seen during the move were served from a cache and charged nothing,
+which was right. But **terminal** positions were charged a unit of budget on
+every re-visit, even though a terminal position needs no network call at all —
+the rules give its value exactly, once and forever.
+
+In quiet positions this barely showed: a declared budget of 200 bought 119 to
+221 distinct positions. In the positions that decide games it was severe. In a
+win-in-one position a budget of 200 bought **14 distinct positions and a
+search two plies deep**, because 187 of the 199 walks down the tree went on
+re-confirming the same known win and each was billed.
+
+**How it was caught.** The human asked whether re-visiting the same state was
+good or bad, and whether counting only unique states defeated the point of
+visit counts. Answering it properly required separating two things the code
+had conflated — how often the search *walks through* a node, which is the
+training signal, and how many positions the network *looks at*, which is the
+budget. The measurement took two minutes once the question was posed
+correctly.
+
+**Cost.** Every two-headed experiment, including the whole of lineage L5, ran
+with a search far weaker than its rubric declared, in exactly the positions
+where tactics decide the outcome. That is a strong candidate for the wall at
+the deeper rungs of the ladder, where winning needs two- and three-move
+combinations that a two-ply search cannot see. It also means the rubric's
+"search of 200 positions per move" was not a true description of any run so
+far, so exp-028 and exp-029 were not testing the recipe they recorded.
+
+**Root cause.** A comment in the evaluate branch read "Terminal states are
+exact and need no network call, but still count as a state explored." Both
+halves were noticed; only the second was acted on. The first half is the
+reason the charge is wrong. As with R-006 and R-007, the defect was seen,
+written down, and then not followed through — the third instance of the same
+move in eight retros.
+
+**Changed.**
+- A position is charged to the budget once per move, however often the search
+  returns to it. Terminals and depth-capped nodes carry a `counted` flag.
+- Re-visits are untouched. They were never the problem: a lopsided visit
+  count is precisely the training target the move head needs, and the fix
+  stops *billing* for confidence rather than stopping the search from
+  expressing it. The winning move still takes over 80% of the search's
+  attention in a win-in-one position, and a test asserts it.
+- Making re-visits free introduced a termination risk: where every reachable
+  line is already paid for, nothing advances the budget and the loop would
+  not end. The number of walks is now capped at a generous multiple of the
+  budget, purely as a guard. A test asserts the guard is loose enough that
+  the position budget binds first in ordinary positions, so it cannot be
+  tightened without something objecting.
+- Measured after the fix: a real self-play game now examines about 178
+  distinct positions per move against a declared 200, and wall-clock time per
+  game is unchanged.
+
+**Standing rule added.** When a budget, a quota or a cost is defined, a test
+must assert what it *buys*, not only that it is not exceeded. The old test
+checked `nodes_evaluated <= budget`, which passed throughout: the search was
+scrupulous about not overspending a number that had stopped meaning anything.
+A limit is only meaningful alongside evidence of what the limit purchases.

@@ -203,6 +203,14 @@ class SearchConfig:
     dirichlet_noise: float = 0.0
     dirichlet_alpha: float = 1.0
     seed: int = 0
+    # Re-visiting a position already paid for is free, because the budget
+    # buys looks by the NETWORK and a repeat needs none. But free is not
+    # unlimited: in a position where every reachable line is already paid for
+    # — a nearly full board, or a forced sequence — nothing would ever advance
+    # the budget and the loop would not end. So the number of walks down the
+    # tree is also capped, at this multiple of the budget. It is a termination
+    # guard, not a second budget: it should rarely bind.
+    max_simulations_per_budget: int = 20
     # Which statistic names the move once the search is done.
     #   "visits" — the most-attended move, as AlphaZero does. Steadier,
     #              because a move earns visits only by continuing to look
@@ -216,7 +224,8 @@ class SearchConfig:
 
 class _Node:
     __slots__ = ("state", "depth", "visits", "value_sum", "children", "priors",
-                 "legal", "terminal", "terminal_value", "confidence", "expanded")
+                 "legal", "terminal", "terminal_value", "confidence", "expanded",
+                 "counted")
 
     def __init__(self, state: object, depth: int, confidence: float):
         self.state = state
@@ -230,6 +239,9 @@ class _Node:
         self.terminal = False
         self.terminal_value = 0.0  # from THIS node's mover's perspective
         self.expanded = False
+        # Has this position already been charged to the budget? A position is
+        # paid for once per move, however often the search returns to it.
+        self.counted = False
 
     @property
     def mean_value(self) -> float:
@@ -348,7 +360,12 @@ class BudgetedSearch:
             for i, a in enumerate(root.legal):
                 root.priors[a] = (1 - mix) * root.priors[a] + mix * noise[i]
 
-        while nodes_evaluated < self.cfg.node_budget and root.legal:
+        simulations = 0
+        simulation_cap = max(1, self.cfg.node_budget
+                             * self.cfg.max_simulations_per_budget)
+        while (nodes_evaluated < self.cfg.node_budget and root.legal
+               and simulations < simulation_cap):
+            simulations += 1
             # SELECT: walk down by PUCT to a node we have not looked at yet.
             node = root
             path: List[_Node] = [root]
@@ -368,19 +385,39 @@ class BudgetedSearch:
                 node = child
                 path.append(node)
 
-            # EVALUATE: one unit of budget. Terminal states are exact and need
-            # no network call, but still count as a state explored.
+            # EVALUATE: at most one unit of budget.
+            #
+            # The budget buys LOOKS AT POSITIONS BY THE NETWORK. A position
+            # already looked at this move is free (the cache), and so is a
+            # terminal position after the first time: the rules give its value
+            # exactly, forever, with no network call. Re-visiting is not waste
+            # — it is how the search expresses confidence, and a lopsided
+            # visit count is exactly the training signal the move head needs
+            # — so the right treatment is to stop CHARGING for it, not to
+            # stop doing it.
+            #
+            # Charging every re-visit made the declared budget meaningless in
+            # precisely the positions that decide games: a budget of 200 in a
+            # win-in-one position bought 14 distinct positions and a search
+            # two plies deep, because 187 units went on re-confirming the same
+            # known win (R-008).
             if node.terminal:
                 value = node.terminal_value
-                nodes_evaluated += 1
+                if not node.counted:
+                    node.counted = True
+                    nodes_evaluated += 1
             elif not node.expanded:
                 nodes_evaluated += self._expand(node)
+                node.counted = True
                 value = node.value_sum  # set by _expand as the raw estimate
                 node.value_sum = 0.0  # cleared; the backup below records it
             else:
-                # Depth-capped or no legal moves: reuse what we know.
+                # Depth-capped or no legal moves: reuse what we know, and
+                # charge only the first time, for the same reason.
                 value = node.mean_value
-                nodes_evaluated += 1
+                if not node.counted:
+                    node.counted = True
+                    nodes_evaluated += 1
 
             max_depth = max(max_depth, node.depth)
 

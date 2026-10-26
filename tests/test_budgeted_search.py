@@ -249,3 +249,122 @@ def test_model_interface_reports_confidence():
     transition = model.apply(state, 3)
     assert transition.confidence == 1.0, "exact rules are fully trusted"
     assert not transition.done
+
+
+# ---------------------------------------------------------------------------
+# what the budget buys (R-008)
+# ---------------------------------------------------------------------------
+
+
+def _flat_policy_value(obs):
+    """A network with no opinion: flat priors, neutral value. Isolates the
+    search's own behaviour from anything the network contributes."""
+    return np.zeros(7), 0.0
+
+
+def _search_at(moves, budget=200, **kwargs):
+    from harness.budgeted_search import (
+        BudgetedSearch, PerfectConnect4Model, PolicyValueEvaluator, SearchConfig,
+    )
+    from harness.tasks.connect4 import Connect4Env
+
+    env = Connect4Env()
+    env.reset()
+    for m in moves:
+        env.step(m)
+    search = BudgetedSearch(
+        PolicyValueEvaluator(_flat_policy_value, 7), PerfectConnect4Model(),
+        SearchConfig(node_budget=budget, dirichlet_noise=0.0,
+                     select_by="visits", **kwargs))
+    return env, search.run(env.obs())
+
+
+def test_a_terminal_position_is_paid_for_once_not_once_per_visit():
+    """R-008. The budget buys looks by the NETWORK, and a terminal position
+    needs none: the rules give its value exactly. Charging every re-visit
+    made the declared budget meaningless in precisely the positions that
+    decide games — a budget of 200 in a win-in-one position bought 14
+    distinct positions and a search two plies deep."""
+    env, result = _search_at([0, 6, 1, 6, 2, 6])
+    assert 3 in env.winning_moves(1), "this position has a win in one"
+    # Every charged unit corresponds to a distinct position in the tree.
+    assert result.tree_size >= result.nodes_evaluated, (
+        f"charged {result.nodes_evaluated} for a tree of {result.tree_size}: "
+        f"the budget is being spent on re-visits again")
+    assert result.max_depth_reached >= 3, (
+        "with re-visits free the search should reach past the won move")
+
+
+def test_re_visiting_a_won_move_still_concentrates_the_training_target():
+    """The fix must not reduce re-visits, only stop billing for them. A
+    lopsided visit count IS the signal the move head learns from."""
+    env, result = _search_at([0, 6, 1, 6, 2, 6])
+    assert result.best_action_by_visits == 3
+    target = result.visit_policy(temperature=1.0)
+    assert target[3] > 0.8, (
+        f"the winning move holds only {target[3]:.2f} of the search's "
+        f"attention; the move head needs a sharp target here")
+    assert np.isclose(target.sum(), 1.0)
+
+
+def test_the_budget_still_bounds_the_network_calls():
+    for budget in (8, 32, 200):
+        _, result = _search_at([3], budget=budget)
+        assert result.nodes_evaluated <= budget
+
+
+def test_a_quiet_position_spends_its_budget_on_distinct_positions():
+    _, result = _search_at([3, 3, 4, 4])
+    assert result.nodes_evaluated >= 100, "a quiet position has plenty to look at"
+    assert result.tree_size >= result.nodes_evaluated
+
+
+def test_the_search_terminates_on_a_crowded_board():
+    """With re-visits free, a position whose every reachable line is already
+    paid for would never advance the budget, and without the simulation guard
+    the loop would not end. Late-game positions are where that happens, so
+    the assertion is simply that these calls return."""
+    from harness.tasks.connect4 import Connect4Env
+
+    from harness.budgeted_search import (
+        BudgetedSearch, PerfectConnect4Model, PolicyValueEvaluator, SearchConfig,
+    )
+
+    searched = 0
+    for seed in range(12):
+        env = Connect4Env()
+        obs = env.reset()
+        rng = np.random.default_rng(seed)
+        # Deliberately avoid winning moves, which is how a game gets crowded.
+        while True:
+            legal = [c for c in env.legal_actions()
+                     if c not in env.winning_moves(env.current_player)]
+            if not legal:
+                break
+            step = env.step(int(rng.choice(legal)))
+            obs = step.next_obs
+            if step.done:
+                break
+        if env.done or len(env.legal_actions()) > 4:
+            continue
+        result = BudgetedSearch(
+            PolicyValueEvaluator(_flat_policy_value, 7), PerfectConnect4Model(),
+            SearchConfig(node_budget=200, dirichlet_noise=0.0,
+                         select_by="visits")).run(obs)
+        assert result.visit_counts.sum() > 0
+        searched += 1
+    assert searched > 0, "no crowded undecided position was produced to test"
+
+
+def test_the_simulation_guard_must_stay_generous_to_avoid_capping_the_budget():
+    """The guard exists only so the loop terminates, but it is not free of
+    consequence: set too low it stops the search before the POSITION budget
+    is spent, which silently weakens every search. Measured here so the
+    default cannot be lowered without a test objecting."""
+    _, default = _search_at([3, 3, 4, 4])
+    assert default.nodes_evaluated == 200, "the position budget should bind"
+
+    _, throttled = _search_at([3, 3, 4, 4], max_simulations_per_budget=4)
+    assert throttled.nodes_evaluated < 200, (
+        "a tight guard is expected to bind first — if this ever passes the "
+        "guard has stopped mattering and the default could be lowered")
