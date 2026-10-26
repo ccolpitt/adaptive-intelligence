@@ -14,17 +14,25 @@ increasingly sample-efficient at learning the next one.**
 | [`docs/vision.md`](docs/vision.md) | The full framework: five foundational components, critiques, verdicts, research references |
 | [`docs/roadmap.md`](docs/roadmap.md) | Phased implementation plan with definitions of done |
 | [`STATE.md`](STATE.md) | Current position and next task — updated every session |
+| [`docs/using-the-harness.md`](docs/using-the-harness.md) | **Start here to run anything** — play a policy, read a score, check what's training |
 | [`.kiro/steering/core.md`](.kiro/steering/core.md) | Agent steering: principles and session protocol |
+| [`docs/learning-rules.md`](docs/learning-rules.md) | Standing rules the project has adopted, and why |
+| [`docs/defect-retros.md`](docs/defect-retros.md) | Every defect that reached a run, with its cost and root cause |
 | [`docs/design/decisions/`](docs/design/decisions/) | Architecture decision records |
 
 ## Status
 
-Phase 0 (loop harness) — **complete and closed end-to-end.** The domain-agnostic
-train → evaluate → select → archive → repeat loop runs on Connect 4 (seed task #1),
-ported and generalized from the sibling [connect4-rl](../connect4-rl) project.
-First experiment (`exp-001-close-the-loop`): one promotion through the double
-gate, benchmark 0.725 → 0.785, verdict recorded. Next: Phase 1, the solver-based
-absolute benchmark (see `STATE.md`).
+The loop is closed and has run 29 registered experiments across five lineages of
+policies. The current line (`connect4-L5`) is the first with two heads — one
+proposing moves, one judging positions, trained on what a budgeted search
+concluded. It scores **0.646** on the solver ladder reading the position once,
+with no search.
+
+For scale: a random player scores 0.000 on that ladder, a four-ply exhaustive
+solver 0.488, an eight-ply solver 0.717, and a ten-ply solver 0.830. So a single
+forward pass is at about 78% of a ten-ply search. Run
+`python -m harness reference` for the full board — and read it before trusting
+any score, because `1.0` is not reachable on this benchmark.
 
 ## Setup (any machine)
 
@@ -44,23 +52,21 @@ note it in the experiment registry.
 
 ## Usage
 
+Full command reference: [`docs/using-the-harness.md`](docs/using-the-harness.md).
+The four you will want first:
+
 ```bash
-# Run the improvement loop (one run = one registered experiment):
-python3 -m harness run --store store \
-    --experiment-id exp-002 \
-    --hypothesis "if X, we will see Y" \
-    --changes "the one variable changed"
+# Play the current champion. Add --lookahead 200 to let it think.
+python3 -m harness play
 
-# Tell the story of how a policy came to be (lineage + hypotheses + verdicts):
-python3 -m harness report --store store --policy connect4-pol-00005
+# List the policies you could play instead.
+python3 -m harness policies
 
-# Record an experiment's verdict (once, immutable):
-python3 -m harness verdict --store store --experiment-id exp-002 \
-    --verdict supported --tldr "one line: what we learned"
+# What a benchmark score is actually worth. Read this before any other number.
+python3 -m harness reference
 
-# Play Connect 4 against the solver oracle (see what search depth buys —
-# try --depth 2 vs --depth 10; change mid-game with 'd N'):
-python3 -m harness play-solver --depth 8 --first human
+# Is anything training, and how far has it got?
+python3 -m harness status
 ```
 
 ## Repository layout

@@ -58,3 +58,16 @@ repository only.
 | `docs/roadmap.md` | Phases, definitions of done | At phase boundaries |
 | `docs/vision.md` | Full framework, critiques, references | Rarely |
 | `docs/design/decisions/` | ADRs — decisions with rationale and revisit triggers | When decisions are made |
+| `docs/working-with-the-human.md` | **How to reason and how to report** — read before writing any findings up | Rarely |
+| `docs/using-the-harness.md` | Every command, for a person who wants to run something | When commands change |
+| `docs/learning-rules.md` | Standing rules adopted from evidence | When a rule is adopted or revised |
+| `docs/defect-retros.md` | Every defect that reached a run, with cost and root cause | After each defect |
+
+## Reporting
+
+Before writing up any finding, read `docs/working-with-the-human.md`. Two
+requirements from it are load-bearing and recur as failures otherwise:
+**anchor every claim in the invariant that makes it true or false**, and
+**lead with what it means for the decision at hand**, not with the mechanism.
+Explain every piece of jargon on first use, and say plainly what you verified
+and what you assumed.

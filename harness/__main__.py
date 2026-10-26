@@ -55,13 +55,32 @@ def main() -> None:
                         help="search depth in plies (try 2 vs 10; change in-game with 'd N')")
     p_play.add_argument("--first", choices=["human", "solver"], default="human")
 
-    p_playp = sub.add_parser("play", help="play Connect 4 vs an archived policy (default: current champion)")
+    p_playp = sub.add_parser("play", help="play Connect 4 vs an archived policy (default: latest champion)")
     p_playp.add_argument("--store", default="store")
-    p_playp.add_argument("--policy", default=None, help="policy id (default: current champion)")
+    p_playp.add_argument("--policy", default=None, help="policy id (default: latest champion)")
+    p_playp.add_argument("--lineage", default=None,
+                         help="play that lineage's champion, e.g. connect4-L5")
     p_playp.add_argument("--first", choices=["human", "policy"], default="human")
     p_playp.add_argument("--lookahead", type=int, default=0,
-                         help="states the policy may examine per move "
+                         help="distinct positions the policy may examine per move "
                               "(0 = how it is scored; try 200 for a real fight)")
+
+    p_pols = sub.add_parser("policies", help="list archived policies you can play")
+    p_pols.add_argument("--store", default="store")
+    p_pols.add_argument("--lineage", default=None, help="only this lineage")
+    p_pols.add_argument("--all", action="store_true",
+                        help="every policy, not just the ones that were promoted")
+    p_pols.add_argument("--limit", type=int, default=40)
+
+    p_ref = sub.add_parser("reference",
+                           help="what a benchmark score is worth, against players of known strength")
+    p_ref.add_argument("--store", default="store")
+    p_ref.add_argument("--measure", action="store_true",
+                       help="re-measure the reference players (minutes); otherwise read the stored board")
+    p_ref.add_argument("--score", type=float, default=None,
+                       help="place a specific score on the scale")
+    p_ref.add_argument("--policy", default=None,
+                       help="place an archived policy's recorded score on the scale")
 
     p_exp = sub.add_parser("exp-card", help="visual experiment card (hypothesis, setup, result curves)")
     p_exp.add_argument("--store", default="store")
@@ -134,7 +153,42 @@ def main() -> None:
         from .interactive_play import play_policy
 
         play_policy(store, args.policy, human_first=args.first == "human",
-                    lookahead=args.lookahead)
+                    lookahead=args.lookahead, lineage=args.lineage)
+    elif args.command == "policies":
+        from .interactive_play import list_policies
+
+        list_policies(store, lineage=args.lineage,
+                      champions_only=not args.all, limit=args.limit)
+    elif args.command == "reference":
+        from .benchmark_reference import (
+            ReferenceBoardStore, measure_reference_board, render,
+        )
+        from .tasks.connect4_ladder import SolverLadderBenchmark
+
+        benchmark = SolverLadderBenchmark()
+        boards = ReferenceBoardStore(store.root / "reference")
+        board = boards.load(benchmark.ref)
+        if args.measure or board is None:
+            if board is not None:
+                print("re-measuring the reference players; this takes minutes")
+            else:
+                print("no stored reference board; measuring, which takes minutes")
+            board = measure_reference_board(benchmark)
+            print(f"\nstored: {boards.save(board)}\n")
+        print(render(board))
+
+        score = args.score
+        label = "that score"
+        if args.policy:
+            _, meta = store.archive.load_policy(args.policy)
+            score = next((r["score"] for r in reversed(meta.get("eval_records", []))
+                          if "benchmark" in str(r.get("benchmark_ref", ""))
+                          and "lookahead" not in str(r.get("benchmark_ref", ""))), None)
+            label = args.policy
+            if score is None:
+                print(f"\n{args.policy} has no recorded benchmark score")
+        if score is not None:
+            print("\n" + board.describe(score, label))
     elif args.command == "report":
         print(narrative(store, args.policy))
     elif args.command == "card":

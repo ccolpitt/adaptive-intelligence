@@ -88,39 +88,85 @@ def play_solver(depth: int = 8, human_first: bool = True) -> None:
         print(f"Solver wins (depth {depth}).")
 
 
+def has_two_heads(module: torch.nn.Module) -> bool:
+    """Does this saved policy propose moves and judge positions separately?
+
+    Lineages 1 to 4 produced a single set of seven numbers doing both jobs;
+    lineage 5 onward returns move scores and a position value. Everything that
+    reads a policy has to cope with both, because the archive keeps every
+    generation forever and they must all stay playable.
+    """
+    with torch.no_grad():
+        return isinstance(module(torch.zeros(1, 2, 6, 7)), tuple)
+
+
 def _policy_move(module: torch.nn.Module, obs: np.ndarray, env: Connect4Env,
                  lookahead: int = 0) -> int:
     """The policy's move, with its reasoning printed.
 
-    With ``lookahead`` set, the policy may examine that many states before
-    committing — the same budgeted search used in training. The printed values
-    are then what the search concluded rather than the network's first
-    impression, and the two can differ sharply.
+    With ``lookahead`` set, the policy may examine that many distinct
+    positions before committing — the same budgeted search used in training.
+    The printed numbers are then what the search concluded rather than the
+    network's first impression, and the two can differ sharply: that gap is
+    the most interesting thing to watch while playing.
     """
     legal = env.legal_actions()
+    two_heads = has_two_heads(module)
 
-    def bare_q(o):
+    def move_scores(o):
         with torch.no_grad():
-            return module(torch.from_numpy(o).float().unsqueeze(0)).squeeze(0).numpy()
+            out = module(torch.from_numpy(o).float().unsqueeze(0))
+            if isinstance(out, tuple):
+                out = out[0]
+            return out.squeeze(0).numpy()
+
+    def policy_value(o):
+        with torch.no_grad():
+            logits, value = module(torch.from_numpy(o).float().unsqueeze(0))
+            return logits.squeeze(0).numpy(), float(value.item())
+
+    if two_heads:
+        _, position_value = policy_value(obs)
+        print(f"policy's view of this position: {position_value:+.3f} "
+              f"(+1 = it is winning, -1 = it is losing)")
 
     if lookahead > 0:
-        from .budgeted_search import make_search
+        if two_heads:
+            # Both heads guide the search: the move head says where to look,
+            # the value head says what was found. Using the move scores as if
+            # they were position values -- which is what the single-output
+            # path does -- would make the search markedly worse.
+            from .budgeted_search import (
+                BudgetedSearch, PerfectConnect4Model, PolicyValueEvaluator, SearchConfig,
+            )
+            search = BudgetedSearch(
+                PolicyValueEvaluator(policy_value, env.cols),
+                PerfectConnect4Model(env.rows, env.cols),
+                SearchConfig(node_budget=lookahead, dirichlet_noise=0.0,
+                             select_by="visits"))
+        else:
+            from .budgeted_search import make_search
 
-        search = make_search(bare_q, budget=lookahead, spend_rule="puct",
-                             rows=env.rows, cols=env.cols, dirichlet_noise=0.0)
+            search = make_search(move_scores, budget=lookahead, spend_rule="puct",
+                                 rows=env.rows, cols=env.cols,
+                                 dirichlet_noise=0.0, select_by="visits")
         result = search.run(obs)
         values, visits = result.action_values, result.visit_counts
-        ranked = sorted(legal, key=lambda c: -values[c])
-        print(f"policy thinking with {lookahead} states "
-              f"(examined {result.nodes_evaluated}, looked {result.max_depth_reached} "
-              f"moves ahead):")
+        # The move is the most-attended one, as AlphaZero selects.
+        ranked = sorted(legal, key=lambda c: -visits[c])
+        print(f"policy thinking with a budget of {lookahead} positions "
+              f"(examined {result.nodes_evaluated} distinct, looked "
+              f"{result.max_depth_reached} moves ahead):")
         for c in ranked:
-            print(f"  col {c}: {values[c]:+.3f}   (spent {visits[c]} states here)")
+            print(f"  col {c}: {visits[c]:>5} visits   value {values[c]:+.3f}")
         choice = int(ranked[0])
     else:
-        q = bare_q(obs)
+        q = move_scores(obs)
         ranked = sorted(legal, key=lambda c: -q[c])
-        print("policy values, no thinking ahead (best first):")
+        label = ("move head's preference, one look, no thinking ahead — "
+                 "this is how the policy is scored" if two_heads
+                 else "policy values, no thinking ahead")
+        print(f"{label} (best first):")
         for c in ranked:
             print(f"  col {c}: {q[c]:+.3f}")
         choice = int(ranked[0])
@@ -128,18 +174,80 @@ def _policy_move(module: torch.nn.Module, obs: np.ndarray, env: Connect4Env,
     return choice
 
 
-def play_policy(store, policy_id: Optional[str] = None, human_first: bool = True,
-                lookahead: int = 0) -> None:
-    """Play against an archived policy (default: the current champion).
+def find_champion(store, lineage: Optional[str] = None) -> Optional[str]:
+    """The champion to play by default.
 
-    ``lookahead`` is how many states the policy may examine per move. Zero is
-    how it is scored; a few hundred makes it markedly stronger, and playing
-    both is the quickest way to feel the difference search makes.
+    Champions are recorded per lineage, and the task id alone is not a
+    lineage id — asking for "connect4" finds nothing once lineages are named
+    connect4-L5. So: the named lineage if given, otherwise the champion of
+    whichever lineage was promoted most recently, which is the one a person
+    almost always means.
+    """
+    from .jsonl_store import read_jsonl
+
+    if lineage is not None:
+        return store.archive.current_champion(lineage)
+    champion = None
+    for rec in read_jsonl(store.archive.events_path):
+        if rec.get("kind") == "promotion":
+            champion = rec["policy_id"]
+    return champion
+
+
+def list_policies(store, lineage: Optional[str] = None,
+                  champions_only: bool = True, limit: int = 40) -> None:
+    """Print the archived policies a person could play against."""
+    from .jsonl_store import read_jsonl
+
+    promotions = [r for r in read_jsonl(store.archive.events_path)
+                  if r.get("kind") == "promotion"]
+    promoted_ids = {r["policy_id"] for r in promotions}
+    current = {}
+    for r in promotions:
+        current[r.get("task_id")] = r["policy_id"]
+
+    entries = store.archive.all_entries()
+    if lineage:
+        entries = [e for e in entries if e.get("lineage_id") == lineage]
+    if champions_only:
+        entries = [e for e in entries if e.get("policy_id") in promoted_ids]
+
+    if not entries:
+        print("no matching policies in the archive")
+        return
+
+    heading = ("champions" if champions_only else "all policies")
+    print(f"{heading}{' in ' + lineage if lineage else ''} "
+          f"({len(entries)} total, showing the last {min(limit, len(entries))}):")
+    print(f"  {'policy':26s} {'lineage':16s} {'gen':>4} {'benchmark':>10}  note")
+    for entry in entries[-limit:]:
+        pid = entry.get("policy_id", "?")
+        bench = next((r["score"] for r in reversed(entry.get("eval_records", []))
+                      if "benchmark" in str(r.get("benchmark_ref", ""))
+                      and "lookahead" not in str(r.get("benchmark_ref", ""))), None)
+        is_current = pid in current.values()
+        note = "<- current champion" if is_current else ""
+        print(f"  {pid:26s} {str(entry.get('lineage_id', '-')):16s} "
+              f"{entry.get('generation', '?'):>4} "
+              f"{(f'{bench:.3f}' if bench is not None else '-'):>10}  {note}")
+    print(f"\nplay one with:  python -m harness play --policy <policy>")
+    print(f"and give it time to think:  "
+          f"python -m harness play --policy <policy> --lookahead 200")
+
+
+def play_policy(store, policy_id: Optional[str] = None, human_first: bool = True,
+                lookahead: int = 0, lineage: Optional[str] = None) -> None:
+    """Play against an archived policy (default: the latest champion).
+
+    ``lookahead`` is how many distinct positions the policy may examine per
+    move. Zero is how it is scored; a few hundred makes it markedly stronger,
+    and playing both is the quickest way to feel what search adds.
     """
     if policy_id is None:
-        policy_id = store.archive.current_champion("connect4")
+        policy_id = find_champion(store, lineage)
         if policy_id is None:
-            print("no champion in the archive yet — run the loop first")
+            print("no champion in the archive yet — run an experiment first, or "
+                  "list what is there with: python -m harness policies --all")
             return
     module, meta = store.archive.load_policy(policy_id)
     entry = store.archive.get_entry(policy_id)

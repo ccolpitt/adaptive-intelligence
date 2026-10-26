@@ -38,11 +38,50 @@ BOUNDS. Now: no plateau checks before iteration 12, patience 8.
 
 ## RUNNING
 
-- **exp-028-two-heads, extended 60 → 160 cycles.** The two-headed policy
-  reached 0.622 scored with no lookahead (every earlier lineage topped out at
-  0.113) and the trend was still rising when the budget ran out. This asks
-  whether 0.622 is a plateau or a waypoint. Resumable: rerun
-  `experiments/exp_028_two_heads.py` to continue.
+- **exp-029-two-heads-extended, 60 → 160 cycles.** At cycle 123 of 160:
+  champion 0.646, best cycle 0.670, both the highest in the project's history
+  and past the 0.622 it started from. Resumable:
+  `caffeinate -is python3 -u experiments/exp_029_two_heads_extended.py`.
+
+  **Two confounds, both annotated rather than fatal (learning rule 12).**
+  First, it began with a cold restart: the optimiser's accumulated averages
+  and the replay buffer were not carried across the process boundary, which
+  dropped the score from 0.622 to 0.390 and cost 27 cycles to recover
+  (R-007, now fixed for future runs). Second, it has been searching far more
+  shallowly than its rubric declares, because terminal positions were charged
+  to the budget on every re-visit — a declared 200 positions bought 14 in a
+  win-in-one position (R-008, now fixed). So the recipe it recorded is not
+  the recipe it ran, and its verdict must say so.
+
+## A CORRECTION THAT CHANGES HOW EVERY SCORE IS READ (2026-10-26)
+
+The ladder score lives in `[0, 1]` and has been read throughout as though
+`1.0` were reachable and `0.90` at every rung were the bar. Measured against
+players whose strength is known by construction
+(`python -m harness reference`):
+
+| player | ladder score |
+|---|---|
+| random | 0.000 |
+| prefer the centre column | 0.000 |
+| solver, 1 ply | 0.277 |
+| solver, 4 plies | 0.488 |
+| **our champion, no search** | **0.646** |
+| solver, 8 plies | 0.717 |
+| solver, 10 plies | 0.830 |
+
+So the champion is at 78% of a ten-ply exhaustive search while using a single
+forward pass, and the project's own "0.646 out of 1.0" reading was badly
+pessimistic. Two reasons the ceiling is low: the benchmark forces both players
+through fixed openings and plays the policy in both seats, so some games start
+from objectively lost positions; and every rung, including depth 1, takes every
+immediate win and blocks every immediate threat, because the solver checks for
+a win before it checks its depth limit. Rung 1 is not a weak opponent.
+
+Also worth keeping: the ceiling is a **measurement, not a deduction.** On
+depth 8 alone it looked as though 0.72 were the limit and 0.90-per-rung were
+impossible. Depth 10 then reached 0.830 with 0.875 at two rungs. Whether 0.90
+is reachable is still open; that 1.0 is not is settled.
 
 ## NEXT, IN ORDER (from the current evidence)
 
@@ -79,13 +118,145 @@ BOUNDS. Now: no plateau checks before iteration 12, patience 8.
    different questions and reads pessimistically, which nearly sent the
    investigation after the value head.
 
-0c. **Discount the reward by how long the win took** (human-proposed). A win
-   at move 10 should be worth more than a win at move 42, so that taking an
-   available win is always preferred to prolonging the game. The value target
-   is currently the bare outcome; discounting it by the remaining number of
-   moves would make immediacy part of what the policy is trained to want.
-   Cheap, and it addresses the same symptom from the reward side rather than
-   the data side — so it must be tested separately from lever 0, not with it.
+0c. **Discount the value target by how far the position is from the end**
+   (human-proposed, and the reasoning is now worked out).
+
+   *What it is today.* Every position recorded in a game is labelled with the
+   bare final outcome from that position's own mover's perspective: `+1` if
+   that mover went on to win, `−1` if it lost, `0` for a draw. The
+   alternation is correct — consecutive positions genuinely alternate — but
+   there is **no discount**. The opening position of a won game is labelled
+   `+1.0`, exactly like the winning move. The γ of 0.99 that exists in the
+   configuration is used only inside the search's backup and never touches
+   the training target.
+
+   *Why that is defensible and still probably wrong here.* The bare outcome
+   is an **unbiased** estimate of the position's true value under the current
+   policy, which is why AlphaZero uses it. But its variance is enormous: in
+   self-play between two copies of one policy, the outcome of a midgame
+   position is close to a coin flip, so the label is mostly noise. Scaling by
+   `γ^(plies remaining)` **biases** early values toward zero and cuts that
+   variance sharply. At 200 games per cycle this project is variance-limited,
+   not bias-limited, so the trade is likely favourable — and the bias is
+   arguably honest, since it asserts that the opening is roughly balanced,
+   which is true.
+
+   *Two further effects worth predicting separately.* It gives the policy a
+   reason to finish quickly, which is the human's "killer instinct"
+   intuition. And it shrinks the noisy value gradient flowing through the
+   **shared trunk**, which may help the move head as a side effect — the two
+   heads share every convolutional layer and the losses are summed at weight
+   1.0.
+
+   *Design.* One lever: `value_target_discount` in the rubric, γ per ply
+   remaining. Try 0.99 and 0.95. Measure the benchmark score, both tactical
+   rates, and the mean game length — the last is the direct test of whether
+   immediacy was actually learned. Three seeds, since the effect may be
+   smaller than the seed spread.
+
+   *Variant to hold in reserve, not to combine:* train the value head on a
+   blend of the final outcome and the search's own backed-up root value, as
+   KataGo does. The search value has much lower variance and is available at
+   once. Test only after the discount is settled.
+
+0d. **Weight the move-head loss toward decisive positions, and leave the
+   value head's sampling alone** (human-proposed; the one the human singled
+   out). *"If I'm taking a bus to a piano lesson, I can fall asleep on the
+   bus without consequence, but if I fall asleep in the piano lesson, I miss
+   out on learning a new piece."*
+
+   *The measurement that motivates it.* Over 616 positions from champion
+   self-play: a win was available in **3.6%**, a block was required in
+   **9.6%**, and **86.9% were quiet**. The buffer samples uniformly, so
+   roughly seven eighths of the move head's gradient comes from positions
+   where almost any sensible move is fine.
+
+   *Why this is not a repeat of exp-007, which was refuted.* exp-007 forced a
+   30% terminal quota on the single-output learner and produced the worst
+   head-to-head of that campaign (0.36–0.39), diagnosed as distorting the
+   sampling distribution: endgame values over-fitted, midgame values
+   under-trained. That damage was to **value estimation**, and the
+   single-output learner could not separate the two jobs because one set of
+   numbers did both. The two-headed learner has **two losses with separate
+   targets**, so the policy loss can be reweighted while the value
+   regression continues to see the natural distribution. That is a
+   structurally different experiment, not a re-run.
+
+   *Design.* One lever: a per-example weight on the policy loss only, raised
+   for positions where the mover has a win available or must block one. Start
+   modest — weight 3, which lifts decisive positions from about 13% to about
+   30% of the policy gradient without touching which examples are drawn.
+   Measure: takes-an-available-win and blocks-a-forced-loss as the primary
+   outcomes, benchmark score as the thing that must not regress, and the
+   value head's calibration probes as the guard against exp-007's failure
+   mode reappearing through the shared trunk.
+
+0e. **Prioritized replay on "hot" positions** (human-proposed). The sampling
+   counterpart to 0d: change which examples are *drawn*, not how they are
+   weighted once drawn. Strictly riskier than 0d, because it does distort
+   the value head's distribution — which is exactly what refuted exp-007 —
+   so **0d is tested first and this only if 0d helps.** If it is run, define
+   "hot" by a measured quantity rather than by hand: the disagreement between
+   the move head's prior and the search's visit distribution is the natural
+   choice, since it marks positions where deliberation changed the answer,
+   and it needs no knowledge of Connect 4. Reference: Schaul et al., ICLR
+   2016.
+
+0f. **Does batch normalisation help or hurt?** (human-proposed, after a
+   measurement neither of us expected).
+
+   *What it does, since this is easy to misread:* it normalises
+   **activations**, not weights. After each convolution it takes each
+   channel, subtracts the mean and divides by the standard deviation computed
+   **across the examples in the batch**, then applies a learned scale and
+   shift. During training those statistics come from the batch of 128. At
+   inference on a single position no batch exists, so it uses a running
+   average accumulated during training.
+
+   *The measurement.* On 256 positions from random play, switching which
+   statistics are used flips the **chosen column in 13% of positions** and
+   moves the value estimate by up to a full 1.0. So the normalisation is
+   load-bearing in actual decisions. What is **not** yet measured is whether
+   the running averages are wrong for the deep positions the search descends
+   into, which are drawn from a different distribution than the buffer.
+
+   *Design.* Champion-versus-challenger on one lever, three arms: batch
+   normalisation as now; removed entirely; and replaced by a normalisation
+   that does not depend on batch composition. Measure the benchmark score and
+   — the specific thing at issue — the agreement between the two statistics
+   on the positions the search actually visits.
+
+0g. **A policy head that keeps the board's shape** (human-proposed). Today
+   the trunk's output is flattened from 64 channels × 6 × 7 = 2688 numbers
+   straight into a 128-unit layer, a 21-fold compression, and only then into
+   7 column scores. Every spatial relationship must be reconstructed inside a
+   dense layer.
+
+   AlphaZero instead applies a **1 × 1 convolution** to compress 64 channels
+   to about 2 *at every cell*, preserving the 6 × 7 layout, and flattens only
+   at the very end. A 1 × 1 convolution cannot itself detect a pattern — it
+   sees one cell and mixes channels — and that is the point: the trunk has
+   already done the spatial work, and the 1 × 1 carries the result forward
+   **located** rather than scrambled, into an output that is itself
+   per-column.
+
+   *Design.* One lever at a time, and the trunk depth is a separate arm from
+   the head shape. Arm A: 1 × 1 convolutional heads, trunk unchanged. Arm B:
+   trunk deepened from 3 to 6 convolutional layers with the current heads —
+   noting that three 3 × 3 layers already give a 7 × 7 receptive field, so
+   extra depth buys reasoning about combinations rather than a wider view, and
+   that without residual connections plain stacking may train worse. New
+   lineage for each, since the network's shape changes.
+
+0h. **First-play urgency in the search** (agreed defect-adjacent, but a
+   behaviour change so it gets a hypothesis). `_select_action` scores an
+   unvisited child with `Q = 0.0`. When the policy is winning and its visited
+   children sit near `+0.6`, an unvisited child at `0.0` looks *worse*, so the
+   search stops widening exactly when it is ahead; when losing, unvisited
+   children look better than they are and it thrashes. The standard remedy is
+   to initialise an unvisited child to its parent's value. One line, and it
+   interacts with the terminal-billing fix (R-008), so measure it after that
+   change has settled rather than alongside it.
 
 1. **Deeper ladder rungs — `connect4-eval@v2`.** The top rung is a 6-move
    search and the policy now wins 0.55 against it. If scores keep climbing
@@ -112,6 +283,44 @@ BOUNDS. Now: no plateau checks before iteration 12, patience 8.
    watching for them. Both were crashes rather than silent wrong numbers, so
    the right fix is probably an integration test that forces every path where
    learners differ, not a runtime check.
+
+## LONG HORIZON — FILED, NOT QUEUED
+
+- **A network that re-initialises parts of itself and distils into them**
+  (human-proposed, 2026-10-26, and the human's own assessment is that it
+  would be a significant result).
+
+  *The idea.* Deliberately let parts of the network fall to zero, then
+  re-initialise those parts to take on new material, while the knowledge
+  already held is preserved by the network teaching itself — distilling its
+  current behaviour into the surviving capacity before the reset. The payoff
+  the human names: **learning would never have to restart from scratch.**
+  Every architecture change in this project so far has forced a new lineage
+  from random weights precisely because weights cannot survive a change of
+  shape, and four lineages of accumulated competence were abandoned that way.
+
+  *Why it is filed rather than queued.* It is three mechanisms, not one:
+  deciding *which* capacity is spent, preserving behaviour across the reset,
+  and allocating the freed capacity to new material. Each needs its own
+  measurement, and none can be evaluated honestly until there is a **second
+  task** to transfer to — with only Connect 4 in play, "learning the next
+  task more cheaply" has nothing to measure against. It also sits adjacent
+  to the deferred learned-structural-update item in `docs/vision.md` §5, so
+  it needs the human's explicit agreement before any of it is built.
+
+  *What already exists to build on.* The weight-change metric per training
+  step and its two expectation checks (added 2026-10-26) are the measurement
+  this needs: they say when a network has stopped absorbing new material,
+  which is the trigger condition for a reset. The dormant-fraction probe per
+  layer already reports which capacity is idle. Roadmap 8d's curriculum
+  trigger is the same signal used for a different purpose.
+
+  *Revisit trigger.* When a second task exists and a single network is being
+  trained on both — that is, when roadmap Phase 2 is underway — and the
+  weight-change metric shows a lineage has stopped learning while still short
+  of its benchmark ceiling. At that point the first of the three mechanisms
+  (preserve behaviour across a deliberate partial reset) becomes testable on
+  its own, with "the benchmark score survives the reset" as the measurement.
 
 ## PREVIOUSLY QUEUED
 

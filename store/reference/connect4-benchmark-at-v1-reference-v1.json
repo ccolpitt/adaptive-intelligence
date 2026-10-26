@@ -1,0 +1,92 @@
+{
+  "benchmark_ref": "connect4-benchmark@v1",
+  "version": 1,
+  "ref": "connect4-benchmark@v1-reference@v1",
+  "created_at": "2026-10-26T05:23:28.974672+00:00",
+  "scores": [
+    {
+      "name": "random",
+      "description": "a player with no knowledge at all: the floor",
+      "score": 0.0,
+      "per_rung": {
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0
+      },
+      "seconds": 5.5
+    },
+    {
+      "name": "centre-habit",
+      "description": "prefer the middle column, nothing else \u2014 one sentence of Connect 4 advice and no search",
+      "score": 0.0,
+      "per_rung": {
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0
+      },
+      "seconds": 5.1
+    },
+    {
+      "name": "solver-depth-1",
+      "description": "exhaustive search one ply deep: takes every immediate win, blocks every immediate threat, then judges by threat count and centre control",
+      "score": 0.2767857142857143,
+      "per_rung": {
+        "1": 0.5,
+        "2": 0.3214,
+        "3": 0.2321,
+        "4": 0.2679,
+        "5": 0.1607,
+        "6": 0.1786
+      },
+      "seconds": 7.0
+    },
+    {
+      "name": "solver-depth-4",
+      "description": "exhaustive search four plies deep",
+      "score": 0.4880952380952381,
+      "per_rung": {
+        "1": 0.7321,
+        "2": 0.3571,
+        "3": 0.6607,
+        "4": 0.5,
+        "5": 0.4107,
+        "6": 0.2679
+      },
+      "seconds": 14.3
+    },
+    {
+      "name": "solver-depth-8",
+      "description": "exhaustive search eight plies deep",
+      "score": 0.7172619047619048,
+      "per_rung": {
+        "1": 0.6964,
+        "2": 0.7143,
+        "3": 0.875,
+        "4": 0.5893,
+        "5": 0.75,
+        "6": 0.6786
+      },
+      "seconds": 121.1
+    },
+    {
+      "name": "solver-depth-10",
+      "description": "exhaustive search ten plies deep \u2014 the strongest reference measured, and far stronger than anything this project has trained",
+      "score": 0.8303571428571428,
+      "per_rung": {
+        "1": 0.875,
+        "2": 0.75,
+        "3": 0.8214,
+        "4": 0.8393,
+        "5": 0.8214,
+        "6": 0.875
+      },
+      "seconds": 427.6
+    }
+  ]
+}
