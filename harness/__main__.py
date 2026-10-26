@@ -97,6 +97,18 @@ def main() -> None:
     p_tac.add_argument("--store", default="store")
     p_tac.add_argument("--lineage", required=True)
 
+    p_geo = sub.add_parser("tactics-by-geometry",
+                           help="split those rates by line direction and by where the positions came from")
+    p_geo.add_argument("--store", default="store")
+    p_geo.add_argument("--policy", default=None, help="default: the latest champion")
+    p_geo.add_argument("--games-off", type=int, default=400,
+                       help="games of random play (positions the policy never trains on)")
+    p_geo.add_argument("--games-in", type=int, default=60,
+                       help="games of the policy's own play (slower: it searches)")
+    p_geo.add_argument("--budget", type=int, default=200)
+    p_geo.add_argument("--seed", type=int, default=0)
+    p_geo.add_argument("--json", action="store_true")
+
     p_cp = sub.add_parser("campaign-plot", help="one picture: best score per experiment + champion lineage")
     p_cp.add_argument("--store", default="store")
 
@@ -334,6 +346,22 @@ def main() -> None:
             records = [r for d in sorted((store.root / "cycles").glob("*"))
                        if d.is_dir() for r in cycles_store.load_all(d.name)]
         print(render_review(review_checks(records)))
+    elif args.command == "tactics-by-geometry":
+        from .interactive_play import find_champion
+        from .tactical_probe import probe_policy, render
+
+        policy_id = args.policy or find_champion(store)
+        if policy_id is None:
+            print("no policy to probe; try: python -m harness policies --all")
+            return
+        module, _ = store.archive.load_policy(policy_id)
+        breakdowns = probe_policy(module, games_off=args.games_off,
+                                  games_in=args.games_in, budget=args.budget,
+                                  seed=args.seed)
+        if args.json:
+            print(json.dumps([b.to_dict() for b in breakdowns], indent=2))
+        else:
+            print(render(breakdowns, label=policy_id))
     elif args.command == "tactics":
         from .cycle_record import CycleStore
 

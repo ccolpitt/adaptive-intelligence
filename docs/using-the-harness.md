@@ -151,6 +151,10 @@ python -m harness card --policy connect4-L5-pol-00106
 # How often does it take an available win, or block a forced loss?
 python -m harness tactics --lineage connect4-L5
 
+# The same two rates, split by the direction of the line and by whether the
+# positions came from the policy's own play or from random play.
+python -m harness tactics-by-geometry
+
 # Read the instruments and say what to try next.
 python -m harness diagnose --policy connect4-L5-pol-00106
 

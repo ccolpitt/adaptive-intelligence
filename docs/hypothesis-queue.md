@@ -112,11 +112,12 @@ is reachable is still open; that 1.0 is not is settled.
    the ladder solvers themselves. The first is cheapest and borrows no
    knowledge of what a good move is.
 
-0b. **Fix the tactical measurement.** Report in-distribution and
-   off-distribution tactical rates **separately**, and stop scoring positions
-   where the opponent is to move. The current single number mixes three
-   different questions and reads pessimistically, which nearly sent the
-   investigation after the value head.
+0b. **DONE (2026-10-26): the tactical measurement is split.** In-distribution
+   and off-distribution rates are reported separately, broken down by the
+   geometry of the line, with unambiguous attribution.
+   `python -m harness tactics-by-geometry`. Results and what they mean: see
+   0f2 below. The old single number mixed three questions and read
+   pessimistically, which nearly sent the investigation after the value head.
 
 0c. **Discount the value target by how far the position is from the end**
    (human-proposed, and the reasoning is now worked out).
@@ -225,6 +226,61 @@ is reachable is still open; that 1.0 is not is settled.
    that does not depend on batch composition. Measure the benchmark score and
    — the specific thing at issue — the agreement between the two statistics
    on the positions the search actually visits.
+
+0f2. **MEASURED, 2026-10-26: diagonals are about twenty points harder than
+   straight lines, and the human asked the right question.** Run it with
+   `python -m harness tactics-by-geometry`. On champion `pol-00132`,
+   attributing only positions with exactly one relevant column completing
+   exactly one line:
+
+   *From the policy's own play (in-distribution):*
+
+   | geometry | takes the win | n | blocks the loss | n |
+   |---|---|---|---|---|
+   | vertical | 0.83 | 24 | **0.98** | 208 |
+   | horizontal | 0.87 | 121 | 0.90 | 206 |
+   | diagonal\\ | 0.67 | 76 | 0.79 | 146 |
+   | diagonal/ | 0.61 | 64 | 0.79 | 163 |
+
+   *From random play (off-distribution, 500 games):*
+
+   | geometry | takes the win | n | blocks the loss | n |
+   |---|---|---|---|---|
+   | vertical | 0.51 | 751 | **0.93** | 526 |
+   | horizontal | 0.57 | 869 | 0.63 | 734 |
+   | diagonal\\ | 0.57 | 195 | **0.53** | 92 |
+   | diagonal/ | 0.59 | 170 | 0.76 | 67 |
+
+   **Two separate effects, and they want different fixes.**
+
+   *Geometry.* In-distribution, straight lines beat diagonals by roughly
+   twenty points on both tactics: taking a win 0.83–0.87 against 0.61–0.67,
+   blocking 0.90–0.98 against 0.79. Both gaps are around four to five
+   standard errors, so they are real and not sampling noise. The ordering
+   makes mechanical sense. A vertical block is the easiest tactic in the
+   game: the column to play **is** the column holding the threat, so the whole
+   pattern lives in one column. A diagonal block is the hardest: the line
+   spans four columns, and *which* column blocks it depends on where a piece
+   would land, which depends on how full the neighbouring columns are.
+
+   This is **independent evidence for 0g**, arrived at from a different
+   direction. Working out which column's landing row intersects a diagonal is
+   exactly the spatial relationship that flattening 64 × 6 × 7 into a
+   128-unit layer destroys. Two unrelated lines of reasoning now point at the
+   same change, which is the strongest argument available for trying it.
+
+   *Distribution.* Off-distribution everything degrades, and the ordering
+   changes rather than simply shifting: vertical blocking survives almost
+   intact (0.93) while horizontal blocking collapses from 0.90 to 0.63, and
+   taking a win becomes uniformly poor at about 0.55 with **no geometric
+   pattern at all**. So win-taking off-distribution is a generalisation
+   failure (item 0), while the diagonal weakness is a representation failure
+   (item 0g). They are not the same problem and should not be fixed together.
+
+   *This also closes 0b.* The split in- against off-distribution, and the
+   removal of opponent-to-move hypotheticals, is implemented in
+   `harness/tactical_probe.py` with the attribution rule that a position
+   which cannot be ascribed to one geometry is not counted under any.
 
 0g. **A policy head that keeps the board's shape** (human-proposed). Today
    the trunk's output is flattened from 64 channels × 6 × 7 = 2688 numbers
