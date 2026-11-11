@@ -18,52 +18,43 @@ roadmap.  We generate each hypothesis based on knowledge of literature and
 the results from previous test.  Each hypothesis states a change in the policy, training, 
 or harness that we think will yield a better policy.  
 
-We start by building the simplest policy that we know works adaquately.  We then iterate
+We start with a baseline policy then iterate
 by testing the simplest hypotheses we can, learning, and iterating on our hypotheses.  We
 operate a champion-challenger model.  During training, we pit a challenger policy against
-the current challenger.  If it is worse than the champion, we do not consider it for 
+the current champion.  If it is worse than the champion, we do not consider it for 
 promotion to the new champion.  If we succeed on beating the champion in training, then
-we test the policy under development via a baseline test.  If we can show we improve the
+we test the policy under development via a baseline test.  The baseline is an absolute measuring stick that evaluates a policy's capability.  If we can show we improve the
 baseline AND beat the current champion, then we promote, and continue with the policy 
 improvement loop.  One meta part of the loop: we should evaluate whether the loop itself 
 is working.  If we detect no improvement, or policies that are promoted, but are inferior
-to previous iterations of the policy, we need to fix the loop.  We will be on the lookout for
-such cases.
+to previous iterations of the policy, we need to fix the loop.  Improving the loop is fair game for hypotheses.
 
-We will always have a roadmap of hypotheses.  The short term goal is to maximize learning
-on the current task.  The long term goal is to demonstrate we can reduce samples necessary 
-to learn, based on previous task mastery.
+We will maintain a roadmap of hypotheses.  The short term goal is to maximize learning on the current task.  The long term goal is to demonstrate we can reduce samples necessary 
+to learn each incremental skill, based on previous task mastery.  Learning tasks that are related should compound.
 
 We close the improvement loop with the simplest components that work, then upgrade one
 component at a time and measure each upgrade against that simple baseline. This order is
-not caution for its own sake. In the connect4-rl precursor, every clever component change
+not caution for its own sake. In the connect4-rl task, every clever component change
 (Double DQN, lower learning rate, wider layers) lost to the plain baseline; only the
 loop-level variable — more training — moved the benchmark. So we close the loop first and
-earn each complication with a measured win:
-
-> Close the loop with the simplest components first. Then upgrade one component at a
-> time, and keep each change only if it beats the simple baseline on the benchmark.
+earn each complication with a measured win.  We also keep an open mind; if a method that worked in literature does not work, we will try other hypotheses, but remain open to returning to a former hypothesis, if the policy, harness, or task are different.  We do not limit ourselves to hypotheses to improve the policy's effectiveness at a task; hypotheses that improve the ability to learn, or simplify architecture, are also welcome.
 
 ## Phase 0 — Loop Harness
 
 Port and generalize the connect4-rl improvement loop into domain-agnostic interfaces.
-The loop is train → evaluate → **select** → archive → repeat.
+The loop is (1) load hypothesis, (2) change harness, policy, or other parameters based on hypothesis (3) define expected outcome based on hypothesis, (4) verify that our training and evaluation data tracking can measure or disprove the hypothesis.  (5) train the policy, or otherwise carry out the test to confirm or invalidate the hypothesis (6) If we are evaluating a superior policy, then evaluate the policy vs. a champion.  (7) If we are evaluating a policy, **select** the policy and promote it to the new champion if it evaluates better than the previous champion.  (8) Archive the policy and results.  (9) Based on the result of the experiment, update the set of existing hypotheses.  This is where creativity and intuition come in.  Based on the test just done, reason about what new hypotheses we should make, and update the prioritization of hypotheses.
 
 **Selection rule (the "select" step), double-gated:** a challenger is promoted only
 if it (a) beats the incumbent champion (relative gate) AND (b) does not regress on
 the fixed benchmark (absolute gate). The relative gate alone is the connect4-rl v32
-failure mode — 32 promotions with unknown absolute strength. Win or lose, every
+failure mode — 32 promotions with unknown improvement in absolute strength. Win or lose, every
 challenger is archived; losers stop receiving compute, never get erased.
 
 ### Core interfaces
-
 - [ ] `Task` interface: versioned bundle of environment ID + reward-function ID +
-      benchmark ID. A task is a contract: observation space, action space,
-      environment step function, reward, and a fixed external benchmark. Changing
-      any part → new task version. Same environment + different reward = different
-      task.
-- [ ] Task registry: append-only, versioned task definitions (`connect4@v1`, …).
-      Eval results are meaningless unless pinned to a (policy, task@v, benchmark@v)
+      benchmark ID. A task is a contract: Given an environment that defines an observation space, an action space and an environment step function, reward function, and a fixed external benchmark, the goal is to maximize the reward. Changing any part defines a new task version.  Same environment + different reward = different task.
+- [ ] Task registry: To build a policy where we can add incremental tasks, we need a taxonomy of tasks.  Tasks are append-only, so we can keep learning, and can be versioned(`connect4@v1`, …).  Tasks are defined by a reward function, and an environment interface.  Tasks can also have an optional evaluation function.
+- [ ] Eval results are meaningless unless pinned to a (policy, task@v, benchmark@v)
       triple; the registry is what makes every archived score interpretable forever.
 - [ ] `Policy` artifact: serialized model + embedded metadata — extend the
       TorchScript `_extra_files` pattern. Metadata references registries by ID,
@@ -71,13 +62,11 @@ challenger is archived; losers stop receiving compute, never get erased.
 - [ ] `Archive`: append-only policy store (the fossil record). League + archive
       IS the end-of-life mechanism — no ecology.
 - [ ] `Evaluator`: runs policy vs opponent(s)/benchmark, records every result
-      stamped with (policy ID, task@v, benchmark@v)
+      stamped with (policy ID, task@v, benchmark@v).  This can be optional in the future, if we are unable to make an "oracle" policy that we know is good.
 - [ ] `Scheduler`: heuristic task/training selection (deliberately simple)
 
 ### Archive metadata (per policy)
-
 Mostly pointers — the lesson lives on the experiment, the policy links to it:
-
 - Lineage: parent policy ID, generation
 - `experiment_id` of the experiment that produced it
 - Training config + task version(s) trained on
@@ -86,9 +75,7 @@ Mostly pointers — the lesson lives on the experiment, the policy links to it:
 - Epitaph: one line — why it lived or died ("lost double gate to v12; see EXP-031")
 
 ### Experiment registry — experiments are first-class citizens
-
 Append-only (formalize connect4-rl's `experiments.json`). Each record:
-
 - [ ] `hypothesis`: "if X, we will see Y" — Y a measurable prediction, registered
       BEFORE the run (framework principle 3)
 - [ ] `conditions`: task@v, benchmark@v, code version, config, seeds, compute
@@ -115,7 +102,7 @@ Append-only (formalize connect4-rl's `experiments.json`). Each record:
       immutable but condition-scoped — supersession, not mutation.
 - [ ] Tags + structured fields for indexing. Start simple: append-only JSONL,
       greppable. Add a real index (embeddings/wiki) only if scale demands it.
-- [ ] Diagnostic telemetry from day one: per-run training curves, gradient norms,
+- [ ] Diagnostic telemetry: per-run training loss curves, gradient norms,
       dormant/dead-neuron stats, per-task eval history — persisted with each
       experiment. This feeds Phase 4 (plasticity) and the diagnosis-driven
       architecture tenets (vision.md, Component 1). Diagnostics must be able to
@@ -134,7 +121,7 @@ Append-only (formalize connect4-rl's `experiments.json`). Each record:
       register per task_id. Cards are derived artifacts under `store/cards/` —
       JSON first (for machines), rendered text second (for humans).
 - [ ] **The diagnostic ladder (who reads the cards):** today the human reads cards
-      to form the next hypothesis; next an agent reads them and proposes; the end
+      to form the next hypothesis.  This is where the human and the machine should collaborate most closely.  They should read the experiment and propose new hypotheses; the end
       state is the POLICY generating, analyzing, and acting on its own cards —
       choosing what to fix and what to try next. Self-diagnosis is part of the
       intelligence, not tooling around it (same absorption pattern as the
@@ -308,6 +295,7 @@ Growing the trunk itself when the portfolio outgrows it is working hypothesis (f
       lever and the baseline every cleverer method must beat. Old experience is
       data the agent already paid samples for; throwing it away is throwing away
       the currency this project is measured in.
+- [ ] Task detection: be able to find localized area in the policy network that map to a task.  Only open neurons associeted with a task, or if there are none, provision new ones.
 
 ### Registered-experiment candidates (human-proposed, 2026-08-31)
 
